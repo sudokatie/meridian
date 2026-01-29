@@ -91,6 +91,16 @@ pub fn infer_expr(expr: &Expr, env: &TypeEnv) -> Result<Type, TypeError> {
                 other => Ok(other),
             }
         }
+
+        // Non-null assertion
+        Expr::NonNullAssert(inner, _span) => {
+            let inner_ty = infer_expr(inner, env)?;
+            // Result is non-nullable version of inner
+            match inner_ty {
+                Type::Nullable(inner) => Ok(*inner),
+                other => Ok(other),
+            }
+        }
     }
 }
 
@@ -137,6 +147,20 @@ fn infer_binary_op(
             } else {
                 Err(TypeError::InvalidOperator {
                     op: format!("{:?}", op),
+                    left: left.clone(),
+                    right: right.clone(),
+                    span,
+                })
+            }
+        }
+
+        // String concatenation
+        BinOp::Concat => {
+            if matches!(left, Type::String | Type::Unknown) && matches!(right, Type::String | Type::Unknown) {
+                Ok(Type::String)
+            } else {
+                Err(TypeError::InvalidOperator {
+                    op: "++".to_string(),
                     left: left.clone(),
                     right: right.clone(),
                     span,

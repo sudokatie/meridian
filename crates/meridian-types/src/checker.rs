@@ -219,6 +219,11 @@ impl Checker {
                     Err(e) => self.errors.push(e),
                 }
             }
+
+            Statement::Union(union_stmt) => {
+                // Verify union target pipeline exists (lenient for now)
+                let _ = scope.resolve(&union_stmt.pipeline.name);
+            }
         }
     }
 

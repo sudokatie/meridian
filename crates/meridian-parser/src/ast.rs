@@ -85,6 +85,7 @@ pub enum Statement {
     OrderBy(OrderByStmt),
     Limit(LimitStmt),
     Join(JoinStmt),
+    Union(UnionStmt),
 }
 
 /// A from statement.
@@ -161,6 +162,13 @@ pub enum JoinKind {
     Right,
 }
 
+/// A union statement.
+#[derive(Debug, Clone)]
+pub struct UnionStmt {
+    pub pipeline: Ident,
+    pub span: Span,
+}
+
 /// A function definition.
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -233,6 +241,9 @@ pub enum Expr {
     // Control
     Match(Vec<(Expr, Expr)>, Option<Box<Expr>>, Span),
     NullCoalesce(Box<Expr>, Box<Expr>, Span),
+    
+    // Non-null assertion (expr!)
+    NonNullAssert(Box<Expr>, Span),
 }
 
 impl Expr {
@@ -250,6 +261,7 @@ impl Expr {
             Expr::Call(_, _, s) => *s,
             Expr::Match(_, _, s) => *s,
             Expr::NullCoalesce(_, _, s) => *s,
+            Expr::NonNullAssert(_, s) => *s,
         }
     }
 }
@@ -270,6 +282,7 @@ pub enum BinOp {
     Ge,
     And,
     Or,
+    Concat,
 }
 
 /// Unary operators.

@@ -58,6 +58,8 @@ pub enum TokenKind {
     Match,
     #[token("let")]
     Let,
+    #[token("union")]
+    Union,
     #[token("assert")]
     Assert,
     #[token("given")]
@@ -120,6 +122,10 @@ pub enum TokenKind {
     Spread,
     #[token("??")]
     NullCoalesce,
+    #[token("++")]
+    Concat,
+    #[token("!")]
+    Bang,
     #[token("=")]
     Assign,
 
@@ -166,6 +172,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::False => write!(f, "false"),
             TokenKind::Match => write!(f, "match"),
             TokenKind::Let => write!(f, "let"),
+            TokenKind::Union => write!(f, "union"),
             TokenKind::Assert => write!(f, "assert"),
             TokenKind::Given => write!(f, "given"),
             TokenKind::Expect => write!(f, "expect"),
@@ -191,6 +198,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::FatArrow => write!(f, "=>"),
             TokenKind::Spread => write!(f, "..."),
             TokenKind::NullCoalesce => write!(f, "??"),
+            TokenKind::Concat => write!(f, "++"),
+            TokenKind::Bang => write!(f, "!"),
             TokenKind::Assign => write!(f, "="),
             TokenKind::LParen => write!(f, "("),
             TokenKind::RParen => write!(f, ")"),

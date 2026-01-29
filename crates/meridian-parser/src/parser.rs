@@ -291,6 +291,7 @@ impl Parser {
             Some(TokenKind::Join | TokenKind::Left | TokenKind::Right | TokenKind::Inner) => {
                 self.parse_join().map(Statement::Join)
             }
+            Some(TokenKind::Union) => self.parse_union().map(Statement::Union),
             Some(_) => {
                 let token = self.peek().unwrap();
                 Err(ParseError::unexpected_token(
@@ -460,6 +461,15 @@ impl Parser {
         })
     }
 
+    fn parse_union(&mut self) -> Result<UnionStmt, ParseError> {
+        let start = self.expect(TokenKind::Union)?.span;
+        let pipeline = self.parse_ident()?;
+        Ok(UnionStmt {
+            span: start.merge(pipeline.span),
+            pipeline,
+        })
+    }
+
     fn parse_function(&mut self) -> Result<Function, ParseError> {
         let start = self.expect(TokenKind::Fn)?.span;
         let name = self.parse_ident()?;
@@ -620,10 +630,11 @@ impl Parser {
 
     fn parse_term(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.parse_factor()?;
-        while let Some(op) = self.match_token(&[TokenKind::Plus, TokenKind::Minus]) {
+        while let Some(op) = self.match_token(&[TokenKind::Plus, TokenKind::Minus, TokenKind::Concat]) {
             let op = match op {
                 TokenKind::Plus => BinOp::Add,
                 TokenKind::Minus => BinOp::Sub,
+                TokenKind::Concat => BinOp::Concat,
                 _ => unreachable!(),
             };
             let right = self.parse_factor()?;
@@ -678,6 +689,10 @@ impl Parser {
                 let right = self.parse_unary()?;
                 let span = expr.span().merge(right.span());
                 expr = Expr::NullCoalesce(Box::new(expr), Box::new(right), span);
+            } else if self.check(TokenKind::Bang) {
+                let end = self.advance().span;
+                let span = expr.span().merge(end);
+                expr = Expr::NonNullAssert(Box::new(expr), span);
             } else {
                 break;
             }
@@ -848,6 +863,7 @@ impl Parser {
                         | TokenKind::False
                         | TokenKind::Match
                         | TokenKind::Let
+                        | TokenKind::Union
                         | TokenKind::Assert
                         | TokenKind::Given
                         | TokenKind::Expect

@@ -34,6 +34,15 @@ pub enum IrNode {
         input: Box<IrNode>,
         count: usize,
     },
+    Union {
+        left: Box<IrNode>,
+        right: Box<IrNode>,
+    },
+    Sink {
+        input: Box<IrNode>,
+        destination: String,
+        format: String,
+    },
 }
 
 /// An IR expression.
@@ -72,6 +81,8 @@ pub enum AggFunc {
     Avg,
     Min,
     Max,
+    First,
+    Last,
 }
 
 /// Binary operators.
@@ -90,6 +101,7 @@ pub enum BinOp {
     Ge,
     And,
     Or,
+    Concat,
 }
 
 /// Unary operators.

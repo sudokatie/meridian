@@ -108,6 +108,8 @@ fn generate_sql(ir: &IrNode) -> Result<String, CodegenError> {
                     AggFunc::Avg => "AVG",
                     AggFunc::Min => "MIN",
                     AggFunc::Max => "MAX",
+                    AggFunc::First => "FIRST",
+                    AggFunc::Last => "LAST",
                 };
                 let arg = generate_expr(&agg.arg);
                 select_parts.push(format!("{}({}) AS {}", func, arg, quote_ident(&agg.name)));
@@ -187,6 +189,21 @@ fn generate_sql(ir: &IrNode) -> Result<String, CodegenError> {
                 Ok(format!("SELECT * FROM ({}) AS _t LIMIT {}", inner, count))
             }
         }
+
+        IrNode::Union { left, right } => {
+            let left_sql = generate_sql(left)?;
+            let right_sql = generate_sql(right)?;
+            Ok(format!("({}) UNION ALL ({})", left_sql, right_sql))
+        }
+
+        IrNode::Sink { input, destination, format } => {
+            let inner = generate_sql(input)?;
+            // Generate COPY statement for writing to file
+            Ok(format!(
+                "COPY ({}) TO '{}' (FORMAT {})",
+                inner, destination, format.to_uppercase()
+            ))
+        }
     }
 }
 
@@ -232,6 +249,7 @@ fn generate_expr(expr: &IrExpr) -> String {
                 BinOp::Ge => ">=",
                 BinOp::And => "AND",
                 BinOp::Or => "OR",
+                BinOp::Concat => "||",
             };
             format!("({} {} {})", left_sql, op_str, right_sql)
         }

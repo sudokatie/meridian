@@ -312,6 +312,7 @@ impl TestRunner {
                     BinOp::Ge => Ok(Value::Bool(compare_values(&l, &r)? >= 0)),
                     BinOp::And => Ok(Value::Bool(l.as_bool()? && r.as_bool()?)),
                     BinOp::Or => Ok(Value::Bool(l.as_bool()? || r.as_bool()?)),
+                    BinOp::Concat => l.concat(&r),
                 }
             }
 
@@ -444,6 +445,13 @@ impl Value {
             Value::Int(n) => Ok(Value::Int(n.abs())),
             Value::Float(n) => Ok(Value::Float(n.abs())),
             _ => Err(format!("cannot take abs of {:?}", self)),
+        }
+    }
+
+    fn concat(&self, other: &Value) -> Result<Value, String> {
+        match (self, other) {
+            (Value::String(a), Value::String(b)) => Ok(Value::String(format!("{}{}", a, b))),
+            _ => Err(format!("cannot concatenate {:?} and {:?}", self, other)),
         }
     }
 }

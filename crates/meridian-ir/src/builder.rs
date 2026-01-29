@@ -153,6 +153,19 @@ impl<'a> IrBuilder<'a> {
                     on,
                 })
             }
+
+            Statement::Union(union_stmt) => {
+                let input = input.ok_or(BuildError::NoFromStatement)?;
+                // Union with another pipeline (represented as a scan for now)
+                let right = IrNode::Scan {
+                    source: union_stmt.pipeline.name.clone(),
+                    columns: vec![],
+                };
+                Ok(IrNode::Union {
+                    left: Box::new(input),
+                    right: Box::new(right),
+                })
+            }
         }
     }
 
@@ -249,6 +262,12 @@ impl<'a> IrBuilder<'a> {
                 let right_ir = self.build_expr(right)?;
                 Ok(IrExpr::Call("coalesce".to_string(), vec![left_ir, right_ir]))
             }
+
+            Expr::NonNullAssert(inner, _) => {
+                // Non-null assertion - just pass through the inner expression
+                // The runtime will fail if null
+                self.build_expr(inner)
+            }
         }
     }
 
@@ -267,6 +286,7 @@ impl<'a> IrBuilder<'a> {
             AstBinOp::Ge => BinOp::Ge,
             AstBinOp::And => BinOp::And,
             AstBinOp::Or => BinOp::Or,
+            AstBinOp::Concat => BinOp::Concat,
         }
     }
 

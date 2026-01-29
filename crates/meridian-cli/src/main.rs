@@ -353,20 +353,35 @@ fn cmd_test(filter: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn cmd_fmt(file: &PathBuf, check: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let _source = std::fs::read_to_string(file)?;
+    let source = std::fs::read_to_string(file)?;
+    
+    // Parse
+    let program = match meridian_parser::parse(&source) {
+        Ok(p) => p,
+        Err(errors) => {
+            for error in errors {
+                eprintln!("parse error: {}", error);
+            }
+            return Err("parsing failed".into());
+        }
+    };
+    
+    // Format
+    let formatted = meridian_parser::format_program(&program);
     
     if check {
-        println!("Checking formatting: {}", file.display());
+        // Compare with original
+        if source.trim() != formatted.trim() {
+            println!("Would reformat: {}", file.display());
+            return Err("file needs formatting".into());
+        } else {
+            println!("OK: {}", file.display());
+        }
     } else {
-        println!("Formatting: {}", file.display());
+        // Write back
+        std::fs::write(file, &formatted)?;
+        println!("Formatted: {}", file.display());
     }
     
-    // TODO: Implement formatter
-    // 1. Parse to AST
-    // 2. Pretty-print AST with consistent formatting
-    // 3. If check mode, compare and exit non-zero if different
-    // 4. If format mode, write back to file
-    
-    println!("Formatter not yet implemented.");
     Ok(())
 }
