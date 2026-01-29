@@ -1,6 +1,6 @@
 //! Meridian CLI
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
@@ -40,6 +40,9 @@ enum Command {
         /// Show optimization passes
         #[arg(long)]
         verbose: bool,
+        /// Output file (writes results instead of printing)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
     /// Run tests
     Test {
@@ -72,8 +75,8 @@ fn main() -> ExitCode {
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Command::Check { file } => cmd_check(&file),
-        Command::Run { file, pipeline, dry_run, verbose } => {
-            cmd_run(&file, pipeline.as_deref(), dry_run, verbose)
+        Command::Run { file, pipeline, dry_run, verbose, output } => {
+            cmd_run(&file, pipeline.as_deref(), dry_run, verbose, output.as_deref())
         }
         Command::Test { filter } => cmd_test(filter.as_deref()),
         Command::Fmt { file, check } => cmd_fmt(&file, check),
@@ -121,8 +124,10 @@ fn cmd_run(
     pipeline_name: Option<&str>,
     dry_run: bool,
     verbose: bool,
+    output: Option<&Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = std::fs::read_to_string(file)?;
+    let base_dir = file.parent().unwrap_or(Path::new("."));
     
     // Parse
     let program = match meridian_parser::parse(&source) {
@@ -145,6 +150,35 @@ fn cmd_run(
             return Err("type checking failed".into());
         }
     };
+    
+    // Create executor
+    let executor = if !dry_run {
+        Some(Executor::new()?)
+    } else {
+        None
+    };
+
+    // Load sources
+    if let Some(ref exec) = executor {
+        for item in &program.items {
+            if let Item::Source(src) = item {
+                let source_path = base_dir.join(&src.path);
+                if verbose {
+                    println!("Loading source '{}' from {}", src.name.name, source_path.display());
+                }
+                match exec.load_source(&src.name.name, &source_path) {
+                    Ok(stats) => {
+                        if verbose {
+                            println!("  Loaded {} rows in {}ms", stats.rows_read, stats.duration_ms);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("warning: failed to load source '{}': {}", src.name.name, e);
+                    }
+                }
+            }
+        }
+    }
     
     // Find pipelines to run
     let pipelines: Vec<_> = program
@@ -172,15 +206,10 @@ fn cmd_run(
     }
     
     let backend = DuckDbBackend;
-    let executor = if !dry_run {
-        Some(Executor::new()?)
-    } else {
-        None
-    };
     
     for pipeline in pipelines {
         if verbose {
-            println!("=== Pipeline: {} ===", pipeline.name.name);
+            println!("\n=== Pipeline: {} ===", pipeline.name.name);
         }
         
         // Build IR
@@ -218,18 +247,31 @@ fn cmd_run(
         
         // Execute
         if let Some(ref exec) = executor {
-            match exec.execute(&sql) {
-                Ok(stats) => {
-                    println!(
-                        "Pipeline '{}' executed: {} rows read, {} rows written, {}ms",
-                        pipeline.name.name,
-                        stats.rows_read,
-                        stats.rows_written,
-                        stats.duration_ms
-                    );
+            if let Some(out_path) = output {
+                // Write to file
+                match exec.execute_to_file(&sql, out_path) {
+                    Ok(stats) => {
+                        println!(
+                            "Pipeline '{}': wrote {} rows to {} in {}ms",
+                            pipeline.name.name,
+                            stats.rows_written,
+                            out_path.display(),
+                            stats.duration_ms
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("execution error for '{}': {}", pipeline.name.name, e);
+                    }
                 }
-                Err(e) => {
-                    eprintln!("execution error for '{}': {}", pipeline.name.name, e);
+            } else {
+                // Print results
+                match exec.query_print(&sql) {
+                    Ok(count) => {
+                        println!("\n({} rows)", count);
+                    }
+                    Err(e) => {
+                        eprintln!("execution error for '{}': {}", pipeline.name.name, e);
+                    }
                 }
             }
         }
