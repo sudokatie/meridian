@@ -1,0 +1,81 @@
+-- Function examples for Meridian
+
+schema Transaction {
+    txn_id: string
+    amount: decimal(10, 2)
+    type: enum("credit", "debit")
+    created_at: timestamp
+}
+
+source transactions from file("data/transactions.csv") {
+    schema: Transaction
+}
+
+-- Classify transactions by size
+fn classify_amount(amount: decimal) -> string {
+    match {
+        amount >= 10000 -> "xlarge"
+        amount >= 1000 -> "large"
+        amount >= 100 -> "medium"
+        _ -> "small"
+    }
+}
+
+-- Calculate risk score based on amount
+fn risk_score(amount: decimal) -> int {
+    match {
+        amount >= 10000 -> 100
+        amount >= 5000 -> 75
+        amount >= 1000 -> 50
+        amount >= 100 -> 25
+        _ -> 10
+    }
+}
+
+-- Format currency display
+fn format_currency(amount: decimal) -> string {
+    "$" ++ amount
+}
+
+-- Using functions in a pipeline
+pipeline classified_transactions {
+    from transactions
+    select {
+        txn_id,
+        amount,
+        display: format_currency(amount),
+        tier: classify_amount(amount),
+        risk: risk_score(amount)
+    }
+    order by risk desc
+}
+
+-- Aggregation with function-based grouping
+pipeline transactions_by_tier {
+    from transactions
+    group by classify_amount(amount)
+    select {
+        tier: classify_amount(amount),
+        count: count(),
+        total: sum(amount),
+        avg_amount: avg(amount)
+    }
+}
+
+-- Tests for functions
+test "classify_amount boundaries" {
+    assert classify_amount(10000) == "xlarge"
+    assert classify_amount(9999) == "large"
+    assert classify_amount(1000) == "large"
+    assert classify_amount(999) == "medium"
+    assert classify_amount(100) == "medium"
+    assert classify_amount(99) == "small"
+}
+
+test "risk_score calculation" {
+    assert risk_score(10000) == 100
+    assert risk_score(5000) == 75
+    assert risk_score(1000) == 50
+    assert risk_score(100) == 25
+    assert risk_score(50) == 10
+}

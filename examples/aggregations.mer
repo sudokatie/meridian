@@ -1,0 +1,65 @@
+-- Aggregation examples for Meridian
+
+schema Sale {
+    sale_id: string
+    product_id: string
+    category: string
+    amount: decimal(10, 2)
+    quantity: int
+    created_at: timestamp
+}
+
+source sales from file("data/sales.parquet") {
+    schema: Sale
+}
+
+-- Basic aggregation: total revenue per category
+pipeline revenue_by_category {
+    from sales
+    group by category
+    select {
+        category,
+        total_revenue: sum(amount),
+        total_items: sum(quantity),
+        order_count: count(),
+        avg_order: avg(amount)
+    }
+    order by total_revenue desc
+}
+
+-- Time-based aggregation: daily sales
+pipeline daily_sales {
+    from sales
+    group by date(created_at)
+    select {
+        day: date(created_at),
+        revenue: sum(amount),
+        orders: count()
+    }
+    order by day
+}
+
+-- Multiple grouping columns
+pipeline product_category_summary {
+    from sales
+    group by category, product_id
+    select {
+        category,
+        product_id,
+        total: sum(amount),
+        qty: sum(quantity)
+    }
+    order by category, total desc
+}
+
+-- Aggregation with filter
+pipeline big_orders_summary {
+    from sales
+    where amount > 100
+    group by category
+    select {
+        category,
+        big_order_count: count(),
+        big_order_total: sum(amount)
+    }
+}

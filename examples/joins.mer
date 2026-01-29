@@ -1,0 +1,89 @@
+-- Join examples for Meridian
+
+schema Customer {
+    customer_id: string
+    name: string
+    email: string
+    created_at: timestamp
+}
+
+schema Order {
+    order_id: string
+    customer_id: string
+    amount: decimal(10, 2)
+    status: enum("pending", "completed", "cancelled")
+    created_at: timestamp
+}
+
+schema Product {
+    product_id: string
+    name: string
+    price: decimal(10, 2)
+    category: string
+}
+
+source customers from file("data/customers.csv") {
+    schema: Customer
+}
+
+source orders from file("data/orders.csv") {
+    schema: Order
+}
+
+source products from file("data/products.csv") {
+    schema: Product
+}
+
+-- Inner join: orders with customer info
+pipeline orders_with_customers {
+    from orders
+    join customers on orders.customer_id == customers.customer_id
+    select {
+        order_id: orders.order_id,
+        customer_name: customers.name,
+        customer_email: customers.email,
+        amount: orders.amount,
+        status: orders.status
+    }
+}
+
+-- Left join: all customers with their orders (if any)
+pipeline customer_orders {
+    from customers
+    left join orders on customers.customer_id == orders.customer_id
+    select {
+        customer_id: customers.customer_id,
+        name: customers.name,
+        order_id: orders.order_id,
+        amount: orders.amount
+    }
+}
+
+-- Join with aggregation: customer spending summary
+pipeline customer_spending {
+    from orders
+    where status == "completed"
+    join customers on orders.customer_id == customers.customer_id
+    group by customers.customer_id, customers.name
+    select {
+        customer_id: customers.customer_id,
+        name: customers.name,
+        total_orders: count(),
+        total_spent: sum(orders.amount)
+    }
+    order by total_spent desc
+    limit 10
+}
+
+-- Join with filter: high-value customer orders
+pipeline high_value_orders {
+    from orders
+    where amount > 500
+    join customers on orders.customer_id == customers.customer_id
+    select {
+        order_id: orders.order_id,
+        customer_name: customers.name,
+        amount: orders.amount
+    }
+    order by amount desc
+}
