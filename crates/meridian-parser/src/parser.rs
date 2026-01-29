@@ -102,6 +102,82 @@ impl Parser {
 
     fn parse_type(&mut self) -> Result<TypeExpr, ParseError> {
         let name = self.parse_ident()?;
+        let start = name.span;
+
+        // Check for generic types: list<T>, map<K, V>, nullable<T>
+        if self.check(TokenKind::Lt) {
+            self.advance(); // consume <
+            match name.name.as_str() {
+                "list" => {
+                    let inner = self.parse_type()?;
+                    self.expect(TokenKind::Gt)?;
+                    let end = self.prev_span();
+                    return Ok(TypeExpr::List(Box::new(inner), start.merge(end)));
+                }
+                "map" => {
+                    let key = self.parse_type()?;
+                    self.expect(TokenKind::Comma)?;
+                    let value = self.parse_type()?;
+                    self.expect(TokenKind::Gt)?;
+                    let end = self.prev_span();
+                    return Ok(TypeExpr::Map(Box::new(key), Box::new(value), start.merge(end)));
+                }
+                "nullable" => {
+                    let inner = self.parse_type()?;
+                    self.expect(TokenKind::Gt)?;
+                    let end = self.prev_span();
+                    return Ok(TypeExpr::Nullable(Box::new(inner), start.merge(end)));
+                }
+                _ => {
+                    return Err(ParseError::UnexpectedToken {
+                        span: start,
+                        expected: "list, map, or nullable".to_string(),
+                        found: format!("{}<...>", name.name),
+                    });
+                }
+            }
+        }
+
+        // Check for parameterized types: decimal(p, s), enum(values...)
+        if self.check(TokenKind::LParen) {
+            self.advance(); // consume (
+            match name.name.as_str() {
+                "decimal" => {
+                    let precision = self.expect_int()? as u8;
+                    self.expect(TokenKind::Comma)?;
+                    let scale = self.expect_int()? as u8;
+                    self.expect(TokenKind::RParen)?;
+                    let end = self.prev_span();
+                    return Ok(TypeExpr::Decimal {
+                        precision,
+                        scale,
+                        span: start.merge(end),
+                    });
+                }
+                "enum" => {
+                    let mut values = Vec::new();
+                    while !self.check(TokenKind::RParen) {
+                        let value = self.expect_string()?;
+                        values.push(value);
+                        if !self.check(TokenKind::RParen) {
+                            self.expect(TokenKind::Comma)?;
+                        }
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    let end = self.prev_span();
+                    return Ok(TypeExpr::Enum(values, start.merge(end)));
+                }
+                _ => {
+                    return Err(ParseError::UnexpectedToken {
+                        span: start,
+                        expected: "decimal or enum".to_string(),
+                        found: format!("{}(...)", name.name),
+                    });
+                }
+            }
+        }
+
+        // Simple named type (string, int, float, interval, etc.)
         Ok(TypeExpr::Named(name))
     }
 
@@ -860,6 +936,7 @@ impl TypeExpr {
             TypeExpr::Named(i) => i.span,
             TypeExpr::Decimal { span, .. } => *span,
             TypeExpr::List(_, span) => *span,
+            TypeExpr::Map(_, _, span) => *span,
             TypeExpr::Enum(_, span) => *span,
             TypeExpr::Nullable(_, span) => *span,
         }
@@ -909,5 +986,121 @@ mod tests {
         let program = result.unwrap();
         assert_eq!(program.items.len(), 1);
         assert!(matches!(program.items[0], Item::Pipeline(_)));
+    }
+
+    #[test]
+    fn test_parse_list_type() {
+        let source = r#"
+            schema Order {
+                items: list<string>
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Schema(schema) = &program.items[0] {
+            assert!(matches!(schema.fields[0].ty, TypeExpr::List(_, _)));
+        } else {
+            panic!("Expected schema");
+        }
+    }
+
+    #[test]
+    fn test_parse_map_type() {
+        let source = r#"
+            schema Config {
+                settings: map<string, int>
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Schema(schema) = &program.items[0] {
+            assert!(matches!(schema.fields[0].ty, TypeExpr::Map(_, _, _)));
+        } else {
+            panic!("Expected schema");
+        }
+    }
+
+    #[test]
+    fn test_parse_decimal_type() {
+        let source = r#"
+            schema Order {
+                amount: decimal(10, 2)
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Schema(schema) = &program.items[0] {
+            if let TypeExpr::Decimal { precision, scale, .. } = &schema.fields[0].ty {
+                assert_eq!(*precision, 10);
+                assert_eq!(*scale, 2);
+            } else {
+                panic!("Expected decimal type");
+            }
+        } else {
+            panic!("Expected schema");
+        }
+    }
+
+    #[test]
+    fn test_parse_nullable_type() {
+        let source = r#"
+            schema User {
+                email: nullable<string>
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Schema(schema) = &program.items[0] {
+            assert!(matches!(schema.fields[0].ty, TypeExpr::Nullable(_, _)));
+        } else {
+            panic!("Expected schema");
+        }
+    }
+
+    #[test]
+    fn test_parse_enum_type() {
+        let source = r#"
+            schema Order {
+                status: enum("pending", "completed", "cancelled")
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Schema(schema) = &program.items[0] {
+            if let TypeExpr::Enum(values, _) = &schema.fields[0].ty {
+                assert_eq!(values.len(), 3);
+                assert_eq!(values[0], "pending");
+            } else {
+                panic!("Expected enum type");
+            }
+        } else {
+            panic!("Expected schema");
+        }
+    }
+
+    #[test]
+    fn test_parse_interval_type() {
+        let source = r#"
+            schema Duration {
+                window: interval
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Schema(schema) = &program.items[0] {
+            if let TypeExpr::Named(ident) = &schema.fields[0].ty {
+                assert_eq!(ident.name, "interval");
+            } else {
+                panic!("Expected named type");
+            }
+        } else {
+            panic!("Expected schema");
+        }
     }
 }

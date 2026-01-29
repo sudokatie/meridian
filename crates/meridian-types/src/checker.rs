@@ -294,6 +294,8 @@ impl Checker {
                 "timestamp" => Type::Timestamp,
                 "date" => Type::Date,
                 "time" => Type::Time,
+                "interval" => Type::Interval,
+                "null" => Type::Null,
                 _ => {
                     // Could be a schema reference
                     if let Some(schema) = self.env.get_schema(&ident.name) {
@@ -310,6 +312,10 @@ impl Checker {
                 scale: *scale,
             },
             AstTypeExpr::List(inner, _) => Type::List(Box::new(self.resolve_type(inner))),
+            AstTypeExpr::Map(key, value, _) => Type::Map(
+                Box::new(self.resolve_type(key)),
+                Box::new(self.resolve_type(value)),
+            ),
             AstTypeExpr::Enum(values, _) => Type::Enum(values.clone()),
             AstTypeExpr::Nullable(inner, _) => Type::Nullable(Box::new(self.resolve_type(inner))),
         }
@@ -383,5 +389,91 @@ mod tests {
         let errors = result.unwrap_err();
         // Should have errors for both undefined 'data' and non-boolean condition
         assert!(errors.iter().any(|e| matches!(e, TypeError::NonBooleanCondition { .. })));
+    }
+
+    #[test]
+    fn test_check_schema_with_list_type() {
+        let source = r#"
+            schema Order {
+                items: list<string>
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let env = check_program(&program).unwrap();
+        let schema = env.get_schema("Order").unwrap();
+        assert!(matches!(schema.fields[0].1, Type::List(_)));
+    }
+
+    #[test]
+    fn test_check_schema_with_map_type() {
+        let source = r#"
+            schema Config {
+                settings: map<string, int>
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let env = check_program(&program).unwrap();
+        let schema = env.get_schema("Config").unwrap();
+        assert!(matches!(schema.fields[0].1, Type::Map(_, _)));
+    }
+
+    #[test]
+    fn test_check_schema_with_interval_type() {
+        let source = r#"
+            schema Window {
+                duration: interval
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let env = check_program(&program).unwrap();
+        let schema = env.get_schema("Window").unwrap();
+        assert_eq!(schema.fields[0].1, Type::Interval);
+    }
+
+    #[test]
+    fn test_check_schema_with_decimal_type() {
+        let source = r#"
+            schema Order {
+                amount: decimal(10, 2)
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let env = check_program(&program).unwrap();
+        let schema = env.get_schema("Order").unwrap();
+        assert!(matches!(schema.fields[0].1, Type::Decimal { precision: 10, scale: 2 }));
+    }
+
+    #[test]
+    fn test_check_schema_with_nullable_type() {
+        let source = r#"
+            schema User {
+                email: nullable<string>
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let env = check_program(&program).unwrap();
+        let schema = env.get_schema("User").unwrap();
+        if let Type::Nullable(inner) = &schema.fields[0].1 {
+            assert_eq!(**inner, Type::String);
+        } else {
+            panic!("Expected Nullable type");
+        }
+    }
+
+    #[test]
+    fn test_check_schema_with_enum_type() {
+        let source = r#"
+            schema Order {
+                status: enum("pending", "completed")
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let env = check_program(&program).unwrap();
+        let schema = env.get_schema("Order").unwrap();
+        if let Type::Enum(values) = &schema.fields[0].1 {
+            assert_eq!(values.len(), 2);
+        } else {
+            panic!("Expected Enum type");
+        }
     }
 }
