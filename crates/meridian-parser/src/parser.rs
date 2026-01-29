@@ -9,7 +9,7 @@ use crate::token::TokenKind;
 /// Parse source code into a program.
 pub fn parse(source: &str) -> Result<Program, Vec<ParseError>> {
     let tokens = lex(source);
-    let mut parser = Parser::new(tokens);
+    let mut parser = Parser::new(tokens, source);
     parser.parse_program()
 }
 
@@ -18,14 +18,16 @@ struct Parser {
     tokens: Vec<Token>,
     pos: usize,
     errors: Vec<ParseError>,
+    source: String,
 }
 
 impl Parser {
-    fn new(tokens: Vec<Token>) -> Self {
+    fn new(tokens: Vec<Token>, source: &str) -> Self {
         Self {
             tokens,
             pos: 0,
             errors: Vec::new(),
+            source: source.to_string(),
         }
     }
 
@@ -45,7 +47,12 @@ impl Parser {
         if self.errors.is_empty() {
             Ok(Program { items })
         } else {
-            Err(self.errors.clone())
+            // Attach source code to errors for better reporting
+            let errors_with_source: Vec<ParseError> = self.errors
+                .iter()
+                .map(|e| e.clone().with_source(&self.source))
+                .collect();
+            Err(errors_with_source)
         }
     }
 
@@ -129,11 +136,11 @@ impl Parser {
                     return Ok(TypeExpr::Nullable(Box::new(inner), start.merge(end)));
                 }
                 _ => {
-                    return Err(ParseError::UnexpectedToken {
-                        span: start,
-                        expected: "list, map, or nullable".to_string(),
-                        found: format!("{}<...>", name.name),
-                    });
+                    return Err(ParseError::unexpected_token(
+                        start,
+                        "list, map, or nullable",
+                        format!("{}<...>", name.name),
+                    ));
                 }
             }
         }
@@ -168,11 +175,11 @@ impl Parser {
                     return Ok(TypeExpr::Enum(values, start.merge(end)));
                 }
                 _ => {
-                    return Err(ParseError::UnexpectedToken {
-                        span: start,
-                        expected: "decimal or enum".to_string(),
-                        found: format!("{}(...)", name.name),
-                    });
+                    return Err(ParseError::unexpected_token(
+                        start,
+                        "decimal or enum",
+                        format!("{}(...)", name.name),
+                    ));
                 }
             }
         }

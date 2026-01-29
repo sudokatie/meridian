@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use miette::Report;
 use meridian_codegen::{Backend, DuckDbBackend};
 use meridian_ir::{build_pipeline, optimize};
 use meridian_parser::Item;
@@ -65,6 +66,18 @@ enum Command {
 }
 
 fn main() -> ExitCode {
+    // Install miette's fancy error handler for prettier diagnostics
+    miette::set_hook(Box::new(|_| {
+        Box::new(
+            miette::MietteHandlerOpts::new()
+                .terminal_links(true)
+                .unicode(true)
+                .context_lines(2)
+                .build(),
+        )
+    }))
+    .ok();
+
     let cli = Cli::parse();
 
     match run(cli) {
@@ -95,7 +108,9 @@ fn cmd_check(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         Ok(p) => p,
         Err(errors) => {
             for error in errors {
-                eprintln!("parse error: {}", error);
+                // Use miette's Report for pretty error display
+                let report = Report::new(error);
+                eprintln!("{:?}", report);
             }
             return Err("parsing failed".into());
         }

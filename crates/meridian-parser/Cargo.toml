@@ -8,5 +8,6 @@ description = "Parser for the Meridian data transformation language"
 [dependencies]
 logos = { workspace = true }
 thiserror = { workspace = true }
+miette = { workspace = true }
 
 [dev-dependencies]
