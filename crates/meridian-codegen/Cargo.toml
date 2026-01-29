@@ -1,0 +1,12 @@
+[package]
+name = "meridian-codegen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Code generation backends for Meridian"
+
+[dependencies]
+meridian-ir = { path = "../meridian-ir" }
+thiserror = { workspace = true }
+
+[dev-dependencies]

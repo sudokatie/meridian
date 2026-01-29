@@ -1,0 +1,12 @@
+[package]
+name = "meridian-ir"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Intermediate representation for Meridian pipelines"
+
+[dependencies]
+meridian-types = { path = "../meridian-types" }
+thiserror = { workspace = true }
+
+[dev-dependencies]

@@ -1,0 +1,21 @@
+[package]
+name = "meridian-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI for the Meridian data transformation language"
+
+[[bin]]
+name = "meridian"
+path = "src/main.rs"
+
+[dependencies]
+meridian-parser = { path = "../meridian-parser" }
+meridian-types = { path = "../meridian-types" }
+meridian-ir = { path = "../meridian-ir" }
+meridian-codegen = { path = "../meridian-codegen" }
+meridian-runtime = { path = "../meridian-runtime" }
+clap = { workspace = true }
+miette = { workspace = true }
+
+[dev-dependencies]
