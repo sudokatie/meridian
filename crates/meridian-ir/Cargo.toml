@@ -6,6 +6,7 @@ license.workspace = true
 description = "Intermediate representation for Meridian pipelines"
 
 [dependencies]
+meridian-parser = { path = "../meridian-parser" }
 meridian-types = { path = "../meridian-types" }
 thiserror = { workspace = true }
 
