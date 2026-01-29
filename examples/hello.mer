@@ -1,0 +1,32 @@
+-- Hello World example for Meridian
+
+schema Order {
+    id: string
+    user_id: string
+    amount: decimal(10, 2)
+    status: enum("pending", "completed", "cancelled")
+}
+
+source orders from file("data/orders.csv") {
+    schema: Order
+}
+
+pipeline completed_orders {
+    from orders
+    where status == "completed"
+    select {
+        id,
+        user_id,
+        total: amount * 2
+    }
+    order by total desc
+    limit 10
+}
+
+fn classify_order(amount: decimal) -> string {
+    match {
+        amount >= 1000 -> "large"
+        amount >= 100 -> "medium"
+        _ -> "small"
+    }
+}

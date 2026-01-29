@@ -4,10 +4,15 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use meridian_codegen::{Backend, DuckDbBackend};
+use meridian_ir::{build_pipeline, optimize};
+use meridian_parser::Item;
+use meridian_runtime::Executor;
+use meridian_types::check_program;
 
 #[derive(Parser)]
 #[command(name = "meridian")]
-#[command(author = "Katie <blackabee@gmail.com>")]
+#[command(author = "Katie the Clawdius Prime")]
 #[command(version = "0.1.0")]
 #[command(about = "A language for data transformation pipelines")]
 struct Cli {
@@ -29,6 +34,12 @@ enum Command {
         /// Specific pipeline to run
         #[arg(long)]
         pipeline: Option<String>,
+        /// Show generated SQL without executing
+        #[arg(long)]
+        dry_run: bool,
+        /// Show optimization passes
+        #[arg(long)]
+        verbose: bool,
     },
     /// Run tests
     Test {
@@ -60,51 +71,202 @@ fn main() -> ExitCode {
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
-        Command::Check { file } => {
-            let source = std::fs::read_to_string(&file)?;
-            match meridian_parser::parse(&source) {
-                Ok(program) => {
-                    println!("Parsed {} items", program.items.len());
-                    Ok(())
-                }
-                Err(errors) => {
-                    for error in errors {
-                        eprintln!("{}", error);
-                    }
-                    Err("parse failed".into())
-                }
+        Command::Check { file } => cmd_check(&file),
+        Command::Run { file, pipeline, dry_run, verbose } => {
+            cmd_run(&file, pipeline.as_deref(), dry_run, verbose)
+        }
+        Command::Test { filter } => cmd_test(filter.as_deref()),
+        Command::Fmt { file, check } => cmd_fmt(&file, check),
+    }
+}
+
+fn cmd_check(file: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    let source = std::fs::read_to_string(file)?;
+    
+    // Parse
+    let program = match meridian_parser::parse(&source) {
+        Ok(p) => p,
+        Err(errors) => {
+            for error in errors {
+                eprintln!("parse error: {}", error);
             }
+            return Err("parsing failed".into());
         }
-        Command::Run { file, pipeline: _ } => {
-            let source = std::fs::read_to_string(&file)?;
-            let _program = meridian_parser::parse(&source).map_err(|e| {
-                for err in &e {
-                    eprintln!("{}", err);
-                }
-                "parse failed"
-            })?;
-            
-            println!("Running...");
-            // TODO: Implement full pipeline
-            let executor = meridian_runtime::Executor::new()?;
-            let stats = executor.execute("SELECT 1")?;
-            println!("Done. {:?}", stats);
+    };
+    
+    // Count items
+    let schema_count = program.items.iter().filter(|i| matches!(i, Item::Schema(_))).count();
+    let source_count = program.items.iter().filter(|i| matches!(i, Item::Source(_))).count();
+    let pipeline_count = program.items.iter().filter(|i| matches!(i, Item::Pipeline(_))).count();
+    let function_count = program.items.iter().filter(|i| matches!(i, Item::Function(_))).count();
+    
+    // Type check
+    match check_program(&program) {
+        Ok(_env) => {
+            println!("OK: {} schemas, {} sources, {} pipelines, {} functions",
+                schema_count, source_count, pipeline_count, function_count);
             Ok(())
         }
-        Command::Test { filter: _ } => {
-            println!("Running tests...");
-            // TODO: Implement test runner
-            println!("No tests found.");
-            Ok(())
-        }
-        Command::Fmt { file, check } => {
-            if check {
-                println!("Checking {}", file.display());
-            } else {
-                println!("Formatting {}", file.display());
+        Err(errors) => {
+            for error in errors {
+                eprintln!("type error: {}", error);
             }
-            // TODO: Implement formatter
-            Ok(())
+            Err("type checking failed".into())
         }
     }
+}
+
+fn cmd_run(
+    file: &PathBuf,
+    pipeline_name: Option<&str>,
+    dry_run: bool,
+    verbose: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = std::fs::read_to_string(file)?;
+    
+    // Parse
+    let program = match meridian_parser::parse(&source) {
+        Ok(p) => p,
+        Err(errors) => {
+            for error in errors {
+                eprintln!("parse error: {}", error);
+            }
+            return Err("parsing failed".into());
+        }
+    };
+    
+    // Type check
+    let env = match check_program(&program) {
+        Ok(env) => env,
+        Err(errors) => {
+            for error in errors {
+                eprintln!("type error: {}", error);
+            }
+            return Err("type checking failed".into());
+        }
+    };
+    
+    // Find pipelines to run
+    let pipelines: Vec<_> = program
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let Item::Pipeline(p) = item {
+                if pipeline_name.is_none() || pipeline_name == Some(p.name.name.as_str()) {
+                    Some(p)
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+    
+    if pipelines.is_empty() {
+        if let Some(name) = pipeline_name {
+            return Err(format!("pipeline '{}' not found", name).into());
+        } else {
+            return Err("no pipelines found".into());
+        }
+    }
+    
+    let backend = DuckDbBackend;
+    let executor = if !dry_run {
+        Some(Executor::new()?)
+    } else {
+        None
+    };
+    
+    for pipeline in pipelines {
+        if verbose {
+            println!("=== Pipeline: {} ===", pipeline.name.name);
+        }
+        
+        // Build IR
+        let ir = match build_pipeline(pipeline, &env) {
+            Ok(ir) => ir,
+            Err(e) => {
+                eprintln!("IR build error for '{}': {}", pipeline.name.name, e);
+                continue;
+            }
+        };
+        
+        if verbose {
+            println!("IR built successfully");
+        }
+        
+        // Optimize
+        let optimized = optimize(ir);
+        
+        if verbose {
+            println!("Optimization complete");
+        }
+        
+        // Generate SQL
+        let sql = match backend.generate(&optimized) {
+            Ok(sql) => sql,
+            Err(e) => {
+                eprintln!("codegen error for '{}': {}", pipeline.name.name, e);
+                continue;
+            }
+        };
+        
+        if dry_run || verbose {
+            println!("Generated SQL:\n{}\n", sql);
+        }
+        
+        // Execute
+        if let Some(ref exec) = executor {
+            match exec.execute(&sql) {
+                Ok(stats) => {
+                    println!(
+                        "Pipeline '{}' executed: {} rows read, {} rows written, {}ms",
+                        pipeline.name.name,
+                        stats.rows_read,
+                        stats.rows_written,
+                        stats.duration_ms
+                    );
+                }
+                Err(e) => {
+                    eprintln!("execution error for '{}': {}", pipeline.name.name, e);
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+fn cmd_test(filter: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Running tests{}...", 
+        filter.map(|f| format!(" (filter: {})", f)).unwrap_or_default());
+    
+    // TODO: Implement test discovery and runner
+    // 1. Find all *_test.mer and test_*.mer files
+    // 2. Parse and extract test blocks
+    // 3. Run each test in isolation
+    // 4. Report results
+    
+    println!("Test framework not yet implemented.");
+    Ok(())
+}
+
+fn cmd_fmt(file: &PathBuf, check: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let _source = std::fs::read_to_string(file)?;
+    
+    if check {
+        println!("Checking formatting: {}", file.display());
+    } else {
+        println!("Formatting: {}", file.display());
+    }
+    
+    // TODO: Implement formatter
+    // 1. Parse to AST
+    // 2. Pretty-print AST with consistent formatting
+    // 3. If check mode, compare and exit non-zero if different
+    // 4. If format mode, write back to file
+    
+    println!("Formatter not yet implemented.");
+    Ok(())
 }

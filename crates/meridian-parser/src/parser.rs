@@ -184,7 +184,8 @@ impl Parser {
     fn parse_source(&mut self) -> Result<Source, ParseError> {
         let start = self.expect(TokenKind::Source)?.span;
         let name = self.parse_ident()?;
-        self.expect_ident("from")?;
+        // Note: 'from' is a keyword, so we expect the token directly
+        self.expect(TokenKind::From)?;
         let source_type = self.parse_ident()?.name;
         self.expect(TokenKind::LParen)?;
         let path = self.expect_string()?;
@@ -194,7 +195,8 @@ impl Parser {
             self.advance();
             let mut cfg = Vec::new();
             while !self.check(TokenKind::RBrace) {
-                let key = self.parse_ident()?;
+                // Config keys can be keywords like 'schema'
+                let key = self.parse_ident_or_keyword()?;
                 self.expect(TokenKind::Colon)?;
                 let value = self.parse_expr()?;
                 cfg.push((key, value));
@@ -229,7 +231,8 @@ impl Parser {
             self.advance();
             let mut cfg = Vec::new();
             while !self.check(TokenKind::RBrace) {
-                let key = self.parse_ident()?;
+                // Config keys can be keywords
+                let key = self.parse_ident_or_keyword()?;
                 self.expect(TokenKind::Colon)?;
                 let value = self.parse_expr()?;
                 cfg.push((key, value));
@@ -789,6 +792,69 @@ impl Parser {
                 "identifier",
                 format!("{}", token.kind),
             )),
+            None => Err(ParseError::unexpected_eof("identifier")),
+        }
+    }
+
+    /// Parse an identifier, also accepting keywords as identifiers.
+    /// Used in contexts where keywords can be used as names (e.g., config keys).
+    fn parse_ident_or_keyword(&mut self) -> Result<Ident, ParseError> {
+        match self.peek() {
+            Some(Token {
+                kind: TokenKind::Ident(name),
+                span,
+            }) => {
+                let name = name.clone();
+                let span = *span;
+                self.advance();
+                Ok(Ident::new(name, span))
+            }
+            Some(token) => {
+                // Accept keywords as identifiers in this context
+                let name = format!("{}", token.kind);
+                let span = token.span;
+                // Only accept actual keywords, not operators
+                if matches!(
+                    token.kind,
+                    TokenKind::Schema
+                        | TokenKind::Source
+                        | TokenKind::Sink
+                        | TokenKind::Pipeline
+                        | TokenKind::From
+                        | TokenKind::Where
+                        | TokenKind::Select
+                        | TokenKind::Group
+                        | TokenKind::By
+                        | TokenKind::Order
+                        | TokenKind::Limit
+                        | TokenKind::Join
+                        | TokenKind::Left
+                        | TokenKind::Right
+                        | TokenKind::Inner
+                        | TokenKind::On
+                        | TokenKind::Fn
+                        | TokenKind::Test
+                        | TokenKind::And
+                        | TokenKind::Or
+                        | TokenKind::Not
+                        | TokenKind::True
+                        | TokenKind::False
+                        | TokenKind::Match
+                        | TokenKind::Let
+                        | TokenKind::Assert
+                        | TokenKind::Given
+                        | TokenKind::Expect
+                ) {
+                    self.advance();
+                    Ok(Ident::new(name, span))
+                } else {
+                    Err(ParseError::unexpected_token(
+                        token.span,
+                        "identifier",
+                        format!("{}", token.kind),
+                    ))
+                }
+            }
             None => Err(ParseError::unexpected_eof("identifier")),
         }
     }

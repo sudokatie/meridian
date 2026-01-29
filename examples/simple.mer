@@ -1,0 +1,7 @@
+-- Simple example that doesn't need schema resolution
+
+pipeline basic {
+    from data
+    where amount > 100
+    limit 10
+}
