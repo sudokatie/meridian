@@ -1,5 +1,7 @@
 //! Meridian CLI
 
+mod testing;
+
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -9,6 +11,8 @@ use meridian_ir::{build_pipeline, optimize};
 use meridian_parser::Item;
 use meridian_runtime::Executor;
 use meridian_types::check_program;
+
+use testing::{TestRunner, print_summary};
 
 #[derive(Parser)]
 #[command(name = "meridian")]
@@ -281,17 +285,56 @@ fn cmd_run(
 }
 
 fn cmd_test(filter: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Running tests{}...", 
-        filter.map(|f| format!(" (filter: {})", f)).unwrap_or_default());
-    
-    // TODO: Implement test discovery and runner
-    // 1. Find all *_test.mer and test_*.mer files
-    // 2. Parse and extract test blocks
-    // 3. Run each test in isolation
-    // 4. Report results
-    
-    println!("Test framework not yet implemented.");
-    Ok(())
+    let runner = TestRunner::new()
+        .with_filter(filter.map(String::from))
+        .with_verbose(true);
+
+    // Discover test files in current directory
+    let cwd = std::env::current_dir()?;
+    let test_files = runner.discover_files(&cwd);
+
+    if test_files.is_empty() {
+        println!("No test files found.");
+        println!("Test files should match: *_test.mer or test_*.mer");
+        return Ok(());
+    }
+
+    println!("Found {} test file(s)", test_files.len());
+
+    // Discover all tests
+    let mut all_tests = Vec::new();
+    for file in &test_files {
+        match runner.discover_tests(file) {
+            Ok(tests) => {
+                if !tests.is_empty() {
+                    println!("  {} ({} tests)", file.display(), tests.len());
+                    all_tests.extend(tests);
+                }
+            }
+            Err(e) => {
+                eprintln!("Error parsing {}: {}", file.display(), e);
+            }
+        }
+    }
+
+    if all_tests.is_empty() {
+        println!("\nNo tests found.");
+        return Ok(());
+    }
+
+    println!("\nRunning {} test(s)...\n", all_tests.len());
+
+    // Run tests
+    let summary = runner.run(&all_tests);
+
+    // Print summary
+    print_summary(&summary);
+
+    if summary.success() {
+        Ok(())
+    } else {
+        Err("some tests failed".into())
+    }
 }
 
 fn cmd_fmt(file: &PathBuf, check: bool) -> Result<(), Box<dyn std::error::Error>> {

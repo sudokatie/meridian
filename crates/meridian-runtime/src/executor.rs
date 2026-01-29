@@ -312,7 +312,7 @@ impl Executor {
         
         // Print header
         let column_names: Vec<String> = (0..column_count)
-            .map(|i| stmt.column_name(i).unwrap_or("?").to_string())
+            .map(|i| stmt.column_name(i).map_or("?".to_string(), |s| s.to_string()))
             .collect();
         println!("{}", column_names.join("\t"));
         println!("{}", "-".repeat(column_names.iter().map(|s| s.len()).sum::<usize>() + column_count));
