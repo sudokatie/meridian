@@ -145,6 +145,7 @@ impl<'a> IrBuilder<'a> {
                     meridian_parser::JoinKind::Inner => JoinKind::Inner,
                     meridian_parser::JoinKind::Left => JoinKind::Left,
                     meridian_parser::JoinKind::Right => JoinKind::Right,
+                    meridian_parser::JoinKind::Full => JoinKind::Full,
                 };
                 Ok(IrNode::Join {
                     kind,
@@ -294,6 +295,8 @@ impl<'a> IrBuilder<'a> {
         match op {
             AstUnaryOp::Neg => UnaryOp::Neg,
             AstUnaryOp::Not => UnaryOp::Not,
+            AstUnaryOp::IsNull => UnaryOp::IsNull,
+            AstUnaryOp::IsNotNull => UnaryOp::IsNotNull,
         }
     }
 }

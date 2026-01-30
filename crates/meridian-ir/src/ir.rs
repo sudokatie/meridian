@@ -109,6 +109,8 @@ pub enum BinOp {
 pub enum UnaryOp {
     Neg,
     Not,
+    IsNull,
+    IsNotNull,
 }
 
 /// Join kinds.
@@ -117,6 +119,7 @@ pub enum JoinKind {
     Inner,
     Left,
     Right,
+    Full,
 }
 
 /// Sort order.

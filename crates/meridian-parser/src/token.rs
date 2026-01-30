@@ -38,8 +38,14 @@ pub enum TokenKind {
     Right,
     #[token("inner")]
     Inner,
+    #[token("full")]
+    Full,
     #[token("on")]
     On,
+    #[token("is")]
+    Is,
+    #[token("null")]
+    Null,
     #[token("fn")]
     Fn,
     #[token("test")]
@@ -162,7 +168,10 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Left => write!(f, "left"),
             TokenKind::Right => write!(f, "right"),
             TokenKind::Inner => write!(f, "inner"),
+            TokenKind::Full => write!(f, "full"),
             TokenKind::On => write!(f, "on"),
+            TokenKind::Is => write!(f, "is"),
+            TokenKind::Null => write!(f, "null"),
             TokenKind::Fn => write!(f, "fn"),
             TokenKind::Test => write!(f, "test"),
             TokenKind::And => write!(f, "and"),

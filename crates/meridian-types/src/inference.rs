@@ -188,7 +188,7 @@ fn infer_unary_op(
             }
         }
         UnaryOp::Not => {
-            if matches!(operand, Type::Bool) {
+            if matches!(operand, Type::Bool | Type::Unknown) {
                 Ok(Type::Bool)
             } else {
                 Err(TypeError::InvalidNot {
@@ -197,6 +197,8 @@ fn infer_unary_op(
                 })
             }
         }
+        // is null / is not null always return bool
+        UnaryOp::IsNull | UnaryOp::IsNotNull => Ok(Type::Bool),
     }
 }
 

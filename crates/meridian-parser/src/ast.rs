@@ -160,6 +160,7 @@ pub enum JoinKind {
     Inner,
     Left,
     Right,
+    Full,
 }
 
 /// A union statement.
@@ -290,4 +291,6 @@ pub enum BinOp {
 pub enum UnaryOp {
     Neg,
     Not,
+    IsNull,
+    IsNotNull,
 }

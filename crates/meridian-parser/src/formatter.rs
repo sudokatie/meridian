@@ -136,6 +136,7 @@ fn format_statement(stmt: &Statement) -> String {
                 JoinKind::Inner => "",
                 JoinKind::Left => "left ",
                 JoinKind::Right => "right ",
+                JoinKind::Full => "full ",
             };
             format!("{}join {} on {}", kind, j.source.name, format_expr(&j.condition))
         }
@@ -218,11 +219,12 @@ fn format_expr(expr: &Expr) -> String {
             format!("{} {} {}", format_expr(left), op_str, format_expr(right))
         }
         Expr::Unary(op, inner, _) => {
-            let op_str = match op {
-                UnaryOp::Neg => "-",
-                UnaryOp::Not => "not ",
-            };
-            format!("{}{}", op_str, format_expr(inner))
+            match op {
+                UnaryOp::Neg => format!("-{}", format_expr(inner)),
+                UnaryOp::Not => format!("not {}", format_expr(inner)),
+                UnaryOp::IsNull => format!("{} is null", format_expr(inner)),
+                UnaryOp::IsNotNull => format!("{} is not null", format_expr(inner)),
+            }
         }
         Expr::Call(name, args, _) => {
             let arg_strs: Vec<_> = args.iter().map(format_expr).collect();

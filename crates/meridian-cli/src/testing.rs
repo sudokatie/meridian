@@ -36,10 +36,12 @@ pub enum TestResult {
 }
 
 impl TestResult {
+    #[allow(dead_code)]
     pub fn is_pass(&self) -> bool {
         matches!(self, TestResult::Pass { .. })
     }
 
+    #[allow(dead_code)]
     pub fn is_fail(&self) -> bool {
         matches!(self, TestResult::Fail { .. })
     }
@@ -56,6 +58,7 @@ pub struct TestSummary {
 }
 
 impl TestSummary {
+    #[allow(dead_code)]
     pub fn total(&self) -> usize {
         self.passed + self.failed + self.skipped
     }
@@ -217,7 +220,7 @@ impl TestRunner {
                         }
                     }
                 }
-                TestStatement::Given { name, value, .. } => {
+                TestStatement::Given { name, value: _, .. } => {
                     // For now, skip given/expect (requires runtime)
                     return TestResult::Skip {
                         reason: format!("given/expect not yet supported ({})", name.name),
@@ -322,6 +325,8 @@ impl TestRunner {
                 match op {
                     UnaryOp::Neg => val.neg(),
                     UnaryOp::Not => Ok(Value::Bool(!val.as_bool()?)),
+                    UnaryOp::IsNull => Ok(Value::Bool(val == Value::Null)),
+                    UnaryOp::IsNotNull => Ok(Value::Bool(val != Value::Null)),
                 }
             }
 
@@ -366,6 +371,7 @@ impl Default for TestRunner {
 
 /// A runtime value for test evaluation.
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 enum Value {
     Int(i64),
     Float(f64),

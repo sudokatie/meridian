@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::Instant;
 
-use duckdb::{Connection, Result as DuckResult};
+use duckdb::Connection;
 
 /// Pipeline executor using DuckDB.
 pub struct Executor {

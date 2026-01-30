@@ -288,7 +288,7 @@ impl Parser {
             Some(TokenKind::Group) => self.parse_group_by().map(Statement::GroupBy),
             Some(TokenKind::Order) => self.parse_order_by().map(Statement::OrderBy),
             Some(TokenKind::Limit) => self.parse_limit().map(Statement::Limit),
-            Some(TokenKind::Join | TokenKind::Left | TokenKind::Right | TokenKind::Inner) => {
+            Some(TokenKind::Join | TokenKind::Left | TokenKind::Right | TokenKind::Full | TokenKind::Inner) => {
                 self.parse_join().map(Statement::Join)
             }
             Some(TokenKind::Union) => self.parse_union().map(Statement::Union),
@@ -441,6 +441,9 @@ impl Parser {
         } else if self.check(TokenKind::Right) {
             self.advance();
             JoinKind::Right
+        } else if self.check(TokenKind::Full) {
+            self.advance();
+            JoinKind::Full
         } else if self.check(TokenKind::Inner) {
             self.advance();
             JoinKind::Inner
@@ -693,6 +696,18 @@ impl Parser {
                 let end = self.advance().span;
                 let span = expr.span().merge(end);
                 expr = Expr::NonNullAssert(Box::new(expr), span);
+            } else if self.check(TokenKind::Is) {
+                self.advance(); // consume 'is'
+                let is_not = if self.check(TokenKind::Not) {
+                    self.advance();
+                    true
+                } else {
+                    false
+                };
+                let end = self.expect(TokenKind::Null)?.span;
+                let span = expr.span().merge(end);
+                let op = if is_not { UnaryOp::IsNotNull } else { UnaryOp::IsNull };
+                expr = Expr::Unary(op, Box::new(expr), span);
             } else {
                 break;
             }
@@ -852,8 +867,11 @@ impl Parser {
                         | TokenKind::Join
                         | TokenKind::Left
                         | TokenKind::Right
+                        | TokenKind::Full
                         | TokenKind::Inner
                         | TokenKind::On
+                        | TokenKind::Is
+                        | TokenKind::Null
                         | TokenKind::Fn
                         | TokenKind::Test
                         | TokenKind::And

@@ -145,6 +145,7 @@ fn generate_sql(ir: &IrNode) -> Result<String, CodegenError> {
                 JoinKind::Inner => "INNER JOIN",
                 JoinKind::Left => "LEFT JOIN",
                 JoinKind::Right => "RIGHT JOIN",
+                JoinKind::Full => "FULL OUTER JOIN",
             };
             
             // Wrap both sides in subqueries for safety
@@ -259,6 +260,8 @@ fn generate_expr(expr: &IrExpr) -> String {
             match op {
                 UnaryOp::Neg => format!("(-{})", operand_sql),
                 UnaryOp::Not => format!("(NOT {})", operand_sql),
+                UnaryOp::IsNull => format!("({} IS NULL)", operand_sql),
+                UnaryOp::IsNotNull => format!("({} IS NOT NULL)", operand_sql),
             }
         }
         
@@ -310,6 +313,8 @@ fn map_function_name(name: &str) -> &str {
         "size" => "LEN",
         "contains" => "CONTAINS",
         "flatten" => "FLATTEN",
+        "filter" => "LIST_FILTER",
+        "map" => "LIST_TRANSFORM",
         
         // Null handling
         "coalesce" => "COALESCE",

@@ -493,6 +493,10 @@ fn eval_unary(op: crate::ir::UnaryOp, lit: &IrLiteral) -> Option<IrLiteral> {
         (crate::ir::UnaryOp::Neg, IrLiteral::Int(n)) => Some(IrLiteral::Int(-n)),
         (crate::ir::UnaryOp::Neg, IrLiteral::Float(n)) => Some(IrLiteral::Float(-n)),
         (crate::ir::UnaryOp::Not, IrLiteral::Bool(b)) => Some(IrLiteral::Bool(!b)),
+        (crate::ir::UnaryOp::IsNull, IrLiteral::Null) => Some(IrLiteral::Bool(true)),
+        (crate::ir::UnaryOp::IsNull, _) => Some(IrLiteral::Bool(false)),
+        (crate::ir::UnaryOp::IsNotNull, IrLiteral::Null) => Some(IrLiteral::Bool(false)),
+        (crate::ir::UnaryOp::IsNotNull, _) => Some(IrLiteral::Bool(true)),
         _ => None,
     }
 }
