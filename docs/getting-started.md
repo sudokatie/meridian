@@ -15,7 +15,7 @@ Meridian is written in Rust. Make sure you have Rust installed:
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
 # Clone and build Meridian
-git clone https://github.com/katieblackabee/meridian.git
+git clone https://github.com/sudokatie/meridian.git
 cd meridian
 cargo install --path crates/meridian-cli
 ```

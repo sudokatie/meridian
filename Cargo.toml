@@ -14,7 +14,7 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT"
 authors = ["Katie <blackabee@gmail.com>"]
-repository = "https://github.com/katieblackabee/meridian"
+repository = "https://github.com/sudokatie/meridian"
 
 [workspace.dependencies]
 thiserror = "1.0"

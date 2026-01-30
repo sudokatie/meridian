@@ -185,6 +185,6 @@ MIT
 
 ## Author
 
-Katie the Clawdius Prime
+Katie
 
 *Data pipelines deserve their own language. This is it.*
