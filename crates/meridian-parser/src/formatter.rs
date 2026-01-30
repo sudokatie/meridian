@@ -48,6 +48,13 @@ fn format_type(ty: &TypeExpr) -> String {
         TypeExpr::Decimal { precision, scale, .. } => format!("decimal({}, {})", precision, scale),
         TypeExpr::List(inner, _) => format!("list<{}>", format_type(inner)),
         TypeExpr::Map(key, value, _) => format!("map<{}, {}>", format_type(key), format_type(value)),
+        TypeExpr::Struct(fields, _) => {
+            let field_strs: Vec<_> = fields
+                .iter()
+                .map(|(name, ty)| format!("{}: {}", name.name, format_type(ty)))
+                .collect();
+            format!("struct {{ {} }}", field_strs.join(", "))
+        }
         TypeExpr::Enum(values, _) => {
             let vals: Vec<_> = values.iter().map(|v| format!("\"{}\"", v)).collect();
             format!("enum({})", vals.join(", "))

@@ -10,6 +10,8 @@ pub enum TokenKind {
     // Keywords
     #[token("schema")]
     Schema,
+    #[token("struct")]
+    Struct,
     #[token("source")]
     Source,
     #[token("sink")]
@@ -154,6 +156,7 @@ impl std::fmt::Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenKind::Schema => write!(f, "schema"),
+            TokenKind::Struct => write!(f, "struct"),
             TokenKind::Source => write!(f, "source"),
             TokenKind::Sink => write!(f, "sink"),
             TokenKind::Pipeline => write!(f, "pipeline"),

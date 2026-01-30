@@ -319,6 +319,13 @@ impl Checker {
             ),
             AstTypeExpr::Enum(values, _) => Type::Enum(values.clone()),
             AstTypeExpr::Nullable(inner, _) => Type::Nullable(Box::new(self.resolve_type(inner))),
+            AstTypeExpr::Struct(fields, _) => {
+                let resolved_fields: Vec<(String, Type)> = fields
+                    .iter()
+                    .map(|(name, ty)| (name.name.clone(), self.resolve_type(ty)))
+                    .collect();
+                Type::Struct(resolved_fields)
+            }
         }
     }
 }

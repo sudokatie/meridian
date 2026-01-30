@@ -43,6 +43,7 @@ pub enum TypeExpr {
     Decimal { precision: u8, scale: u8, span: Span },
     List(Box<TypeExpr>, Span),
     Map(Box<TypeExpr>, Box<TypeExpr>, Span),
+    Struct(Vec<(Ident, TypeExpr)>, Span),
     Enum(Vec<String>, Span),
     Nullable(Box<TypeExpr>, Span),
 }

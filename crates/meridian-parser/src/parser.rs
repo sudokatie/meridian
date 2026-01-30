@@ -108,6 +108,25 @@ impl Parser {
     }
 
     fn parse_type(&mut self) -> Result<TypeExpr, ParseError> {
+        // Handle inline struct type: struct { field: type, ... }
+        if self.check(TokenKind::Struct) {
+            let start = self.advance().span;
+            self.expect(TokenKind::LBrace)?;
+            
+            let mut fields = Vec::new();
+            while !self.check(TokenKind::RBrace) {
+                let field_name = self.parse_ident()?;
+                self.expect(TokenKind::Colon)?;
+                let field_type = self.parse_type()?;
+                fields.push((field_name, field_type));
+                // Optional comma between fields
+                let _ = self.check_and_advance(TokenKind::Comma);
+            }
+            
+            let end = self.expect(TokenKind::RBrace)?.span;
+            return Ok(TypeExpr::Struct(fields, start.merge(end)));
+        }
+        
         let name = self.parse_ident()?;
         let start = name.span;
 
@@ -1044,6 +1063,7 @@ impl TypeExpr {
             TypeExpr::Decimal { span, .. } => *span,
             TypeExpr::List(_, span) => *span,
             TypeExpr::Map(_, _, span) => *span,
+            TypeExpr::Struct(_, span) => *span,
             TypeExpr::Enum(_, span) => *span,
             TypeExpr::Nullable(_, span) => *span,
         }
