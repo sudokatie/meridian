@@ -47,17 +47,29 @@ You describe what you want. Meridian figures out how.
 
 ## Status
 
-**v0.1.0** - MVP in development
+**v0.1.0** - Complete
 
-Currently:
-- Core language design complete
-- Parser and type system in progress
-- DuckDB backend
+Features:
+- Full lexer and recursive descent parser
+- Type system with inference
+- IR with optimization passes
+- DuckDB SQL code generation
+- CLI: check, run, test, fmt
+- Test framework
 
-Coming:
-- Streaming support
-- Spark/Flink backends
-- Language server for IDE support
+## Roadmap
+
+### v0.2 (Planned)
+- [ ] Streaming support with windowing
+- [ ] Spark backend (PySpark generation)
+- [ ] Match expression to SQL CASE conversion
+- [ ] Source schema type checking improvements
+
+### v0.3 (Planned)
+- [ ] Flink backend for production streaming
+- [ ] Language Server Protocol (LSP) for IDE support
+
+See FEATURE-BACKLOG.md in the clawd repo for detailed acceptance criteria.
 
 ---
 
