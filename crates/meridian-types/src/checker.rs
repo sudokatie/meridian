@@ -133,9 +133,23 @@ impl Checker {
     fn check_statement(&mut self, stmt: &Statement, scope: &mut TypeEnv) {
         match stmt {
             Statement::From(from) => {
-                // Verify source exists (lenient - allow unknown sources for now)
-                // TODO: Properly wire source schemas to scope
-                let _ = scope.resolve(&from.source.name);
+                // Look up the source and wire its schema fields to scope
+                // Clone the source info to avoid borrow conflicts
+                let source_data = scope.get_source(&from.source.name).map(|s| {
+                    (s.ty.clone(), from.source.name.clone())
+                });
+                
+                if let Some((source_ty, source_name)) = source_data {
+                    // If the source has a struct type (from a schema), add fields to scope
+                    if let Type::Struct(fields) = &source_ty {
+                        for (field_name, field_type) in fields {
+                            scope.define_local(field_name, field_type.clone());
+                        }
+                    }
+                    // Also add the source itself to scope for qualified access (e.g., orders.id)
+                    scope.define_local(&source_name, source_ty);
+                }
+                // Allow unknown sources for forward references and code generation
             }
 
             Statement::Where(where_stmt) => {
@@ -357,8 +371,8 @@ mod tests {
 
     #[test]
     fn test_check_pipeline_undefined_source() {
-        // Pipeline referencing undefined source - now lenient (returns Ok)
-        // TODO: Re-enable strict checking once sources are properly wired
+        // Pipeline referencing undefined source is allowed (lenient mode)
+        // This supports code generation for external sources defined at runtime
         let source = r#"
             pipeline clean {
                 from nonexistent
@@ -366,7 +380,7 @@ mod tests {
         "#;
         let program = parse(source).unwrap();
         let result = check_program(&program);
-        // Now lenient - allows undefined sources to support code generation
+        // Lenient - allows undefined sources for external/dynamic sources
         assert!(result.is_ok());
     }
 
@@ -483,5 +497,55 @@ mod tests {
         } else {
             panic!("Expected Enum type");
         }
+    }
+
+    #[test]
+    fn test_schema_fields_wired_to_pipeline_scope() {
+        // Schema fields should be available in pipeline scope after `from`
+        let source = r#"
+            schema Order {
+                id: string
+                amount: float
+                is_valid: bool
+            }
+
+            source orders from file("data/orders.csv") {
+                schema: Order
+            }
+
+            pipeline valid_orders {
+                from orders
+                where is_valid
+                where amount > 100.0
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let result = check_program(&program);
+        // Should succeed because is_valid (bool) and amount (float) are in scope
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_qualified_field_access_in_pipeline() {
+        // Access fields via source name (orders.amount)
+        let source = r#"
+            schema Order {
+                id: string
+                amount: float
+            }
+
+            source orders from file("data/orders.csv") {
+                schema: Order
+            }
+
+            pipeline high_value {
+                from orders
+                where orders.amount > 1000.0
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let result = check_program(&program);
+        // Should succeed because orders.amount resolves to float
+        assert!(result.is_ok());
     }
 }
