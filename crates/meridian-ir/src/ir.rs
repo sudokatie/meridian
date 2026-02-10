@@ -53,6 +53,13 @@ pub enum IrExpr {
     BinaryOp(Box<IrExpr>, BinOp, Box<IrExpr>),
     UnaryOp(UnaryOp, Box<IrExpr>),
     Call(String, Vec<IrExpr>),
+    /// CASE WHEN condition THEN result [WHEN ...] [ELSE default] END
+    Case {
+        /// (condition, result) pairs
+        when_clauses: Vec<(IrExpr, IrExpr)>,
+        /// Optional ELSE clause
+        else_clause: Option<Box<IrExpr>>,
+    },
 }
 
 /// An IR literal value.

@@ -251,10 +251,21 @@ impl<'a> IrBuilder<'a> {
                 Err(BuildError::UnsupportedExpression)
             }
 
-            Expr::Match(_, _, _) => {
-                // Match expressions need to be converted to CASE WHEN
-                // TODO: implement match -> CASE conversion
-                Err(BuildError::UnsupportedExpression)
+            Expr::Match(arms, default, _) => {
+                // Convert match to CASE WHEN
+                let when_clauses: Vec<(IrExpr, IrExpr)> = arms
+                    .iter()
+                    .map(|(condition, result)| {
+                        Ok((self.build_expr(condition)?, self.build_expr(result)?))
+                    })
+                    .collect::<Result<_, BuildError>>()?;
+                
+                let else_clause = match default {
+                    Some(expr) => Some(Box::new(self.build_expr(expr)?)),
+                    None => None,
+                };
+                
+                Ok(IrExpr::Case { when_clauses, else_clause })
             }
 
             Expr::NullCoalesce(left, right, _) => {

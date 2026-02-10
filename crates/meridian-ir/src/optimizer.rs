@@ -140,6 +140,17 @@ fn rewrite_predicate(predicate: &IrExpr, columns: &[(String, IrExpr)]) -> IrExpr
             args.iter().map(|a| rewrite_predicate(a, columns)).collect(),
         ),
         IrExpr::Literal(lit) => IrExpr::Literal(lit.clone()),
+        IrExpr::Case { when_clauses, else_clause } => IrExpr::Case {
+            when_clauses: when_clauses
+                .iter()
+                .map(|(cond, result)| {
+                    (rewrite_predicate(cond, columns), rewrite_predicate(result, columns))
+                })
+                .collect(),
+            else_clause: else_clause
+                .as_ref()
+                .map(|e| Box::new(rewrite_predicate(e, columns))),
+        },
     }
 }
 
@@ -163,6 +174,15 @@ fn collect_column_refs_inner(expr: &IrExpr, refs: &mut Vec<String>) {
             }
         }
         IrExpr::Literal(_) => {}
+        IrExpr::Case { when_clauses, else_clause } => {
+            for (cond, result) in when_clauses {
+                collect_column_refs_inner(cond, refs);
+                collect_column_refs_inner(result, refs);
+            }
+            if let Some(else_expr) = else_clause {
+                collect_column_refs_inner(else_expr, refs);
+            }
+        }
     }
 }
 
@@ -253,6 +273,15 @@ fn collect_expr_columns(expr: &IrExpr, cols: &mut Vec<String>) {
             }
         }
         IrExpr::Literal(_) => {}
+        IrExpr::Case { when_clauses, else_clause } => {
+            for (cond, result) in when_clauses {
+                collect_expr_columns(cond, cols);
+                collect_expr_columns(result, cols);
+            }
+            if let Some(else_expr) = else_clause {
+                collect_expr_columns(else_expr, cols);
+            }
+        }
     }
 }
 

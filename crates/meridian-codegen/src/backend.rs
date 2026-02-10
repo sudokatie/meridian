@@ -270,6 +270,22 @@ fn generate_expr(expr: &IrExpr) -> String {
             let args_sql: Vec<String> = args.iter().map(generate_expr).collect();
             format!("{}({})", func, args_sql.join(", "))
         }
+        
+        IrExpr::Case { when_clauses, else_clause } => {
+            let mut sql = "CASE".to_string();
+            for (condition, result) in when_clauses {
+                sql.push_str(&format!(
+                    " WHEN {} THEN {}",
+                    generate_expr(condition),
+                    generate_expr(result)
+                ));
+            }
+            if let Some(else_expr) = else_clause {
+                sql.push_str(&format!(" ELSE {}", generate_expr(else_expr)));
+            }
+            sql.push_str(" END");
+            sql
+        }
     }
 }
 
@@ -553,5 +569,55 @@ mod tests {
         );
         let sql = generate_expr(&expr);
         assert_eq!(sql, "UPPER(\"name\")");
+    }
+
+    #[test]
+    fn test_case_expression() {
+        // CASE WHEN status = 'active' THEN 1 WHEN status = 'inactive' THEN 0 ELSE -1 END
+        let expr = IrExpr::Case {
+            when_clauses: vec![
+                (
+                    IrExpr::BinaryOp(
+                        Box::new(IrExpr::Column("status".to_string())),
+                        BinOp::Eq,
+                        Box::new(IrExpr::Literal(IrLiteral::String("active".to_string()))),
+                    ),
+                    IrExpr::Literal(IrLiteral::Int(1)),
+                ),
+                (
+                    IrExpr::BinaryOp(
+                        Box::new(IrExpr::Column("status".to_string())),
+                        BinOp::Eq,
+                        Box::new(IrExpr::Literal(IrLiteral::String("inactive".to_string()))),
+                    ),
+                    IrExpr::Literal(IrLiteral::Int(0)),
+                ),
+            ],
+            else_clause: Some(Box::new(IrExpr::Literal(IrLiteral::Int(-1)))),
+        };
+        let sql = generate_expr(&expr);
+        assert!(sql.starts_with("CASE"));
+        assert!(sql.contains("WHEN"));
+        assert!(sql.contains("THEN 1"));
+        assert!(sql.contains("THEN 0"));
+        assert!(sql.contains("ELSE -1"));
+        assert!(sql.ends_with("END"));
+    }
+
+    #[test]
+    fn test_case_expression_no_else() {
+        let expr = IrExpr::Case {
+            when_clauses: vec![(
+                IrExpr::BinaryOp(
+                    Box::new(IrExpr::Column("x".to_string())),
+                    BinOp::Gt,
+                    Box::new(IrExpr::Literal(IrLiteral::Int(0))),
+                ),
+                IrExpr::Literal(IrLiteral::String("positive".to_string())),
+            )],
+            else_clause: None,
+        };
+        let sql = generate_expr(&expr);
+        assert_eq!(sql, "CASE WHEN (\"x\" > 0) THEN 'positive' END");
     }
 }
