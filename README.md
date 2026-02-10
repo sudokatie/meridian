@@ -59,11 +59,11 @@ Features:
 
 ## Roadmap
 
-### v0.2 (Planned)
+### v0.2 (Partial)
 - [ ] Streaming support with windowing
 - [ ] Spark backend (PySpark generation)
-- [ ] Match expression to SQL CASE conversion
-- [ ] Source schema type checking improvements
+- [x] Match expression to SQL CASE conversion
+- [x] Source schema type checking improvements
 
 ### v0.3 (Planned)
 - [ ] Flink backend for production streaming
