@@ -60,6 +60,7 @@ impl Parser {
         match self.peek_kind() {
             Some(TokenKind::Schema) => self.parse_schema().map(Item::Schema),
             Some(TokenKind::Source) => self.parse_source().map(Item::Source),
+            Some(TokenKind::Stream) => self.parse_stream().map(Item::Stream),
             Some(TokenKind::Sink) => self.parse_sink().map(Item::Sink),
             Some(TokenKind::Pipeline) => self.parse_pipeline().map(Item::Pipeline),
             Some(TokenKind::Fn) => self.parse_function().map(Item::Function),
@@ -68,7 +69,7 @@ impl Parser {
                 let token = self.peek().unwrap();
                 Err(ParseError::unexpected_token(
                     token.span,
-                    "schema, source, sink, pipeline, fn, or test",
+                    "schema, source, stream, sink, pipeline, fn, or test",
                     format!("{}", token.kind),
                 ))
             }
@@ -246,6 +247,42 @@ impl Parser {
         })
     }
 
+    fn parse_stream(&mut self) -> Result<StreamSource, ParseError> {
+        let start = self.expect(TokenKind::Stream)?.span;
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::From)?;
+        let source_type = self.parse_ident()?.name;
+        self.expect(TokenKind::LParen)?;
+        let path = self.expect_string()?;
+        self.expect(TokenKind::RParen)?;
+
+        let config = if self.check(TokenKind::LBrace) {
+            self.advance();
+            let mut cfg = Vec::new();
+            while !self.check(TokenKind::RBrace) {
+                // Config keys can be keywords like 'schema', 'watermark'
+                let key = self.parse_ident_or_keyword()?;
+                self.expect(TokenKind::Colon)?;
+                let value = self.parse_expr()?;
+                cfg.push((key, value));
+            }
+            self.expect(TokenKind::RBrace)?;
+            cfg
+        } else {
+            Vec::new()
+        };
+
+        let end = self.prev_span();
+
+        Ok(StreamSource {
+            name,
+            source_type,
+            path,
+            config,
+            span: start.merge(end),
+        })
+    }
+
     fn parse_sink(&mut self) -> Result<Sink, ParseError> {
         let start = self.expect(TokenKind::Sink)?.span;
         let pipeline = self.parse_ident()?;
@@ -313,6 +350,8 @@ impl Parser {
                 self.parse_join().map(Statement::Join)
             }
             Some(TokenKind::Union) => self.parse_union().map(Statement::Union),
+            Some(TokenKind::Window) => self.parse_window().map(Statement::Window),
+            Some(TokenKind::Emit) => self.parse_emit().map(Statement::Emit),
             Some(_) => {
                 let token = self.peek().unwrap();
                 Err(ParseError::unexpected_token(
@@ -560,6 +599,111 @@ impl Parser {
         Ok(Duration {
             value,
             unit,
+            span: start.merge(end),
+        })
+    }
+
+    /// Parse a window statement: window tumbling(1.hour) on event_time
+    fn parse_window(&mut self) -> Result<WindowStmt, ParseError> {
+        let start = self.expect(TokenKind::Window)?.span;
+        
+        // Parse window type
+        let window_type = match self.peek_kind() {
+            Some(TokenKind::Tumbling) => {
+                self.advance();
+                self.expect(TokenKind::LParen)?;
+                let size = self.parse_duration()?;
+                self.expect(TokenKind::RParen)?;
+                WindowType::Tumbling(size)
+            }
+            Some(TokenKind::Sliding) => {
+                self.advance();
+                self.expect(TokenKind::LParen)?;
+                let size = self.parse_duration()?;
+                self.expect(TokenKind::Comma)?;
+                let slide = self.parse_duration()?;
+                self.expect(TokenKind::RParen)?;
+                WindowType::Sliding { size, slide }
+            }
+            Some(TokenKind::Session) => {
+                self.advance();
+                self.expect(TokenKind::LParen)?;
+                let gap = self.parse_duration()?;
+                self.expect(TokenKind::RParen)?;
+                WindowType::Session(gap)
+            }
+            Some(_) => {
+                let token = self.peek().unwrap();
+                return Err(ParseError::unexpected_token(
+                    token.span,
+                    "tumbling, sliding, or session",
+                    format!("{}", token.kind),
+                ));
+            }
+            None => return Err(ParseError::unexpected_eof("window type")),
+        };
+        
+        // Parse 'on time_column'
+        self.expect(TokenKind::On)?;
+        let time_column = self.parse_ident()?;
+        
+        let end = time_column.span;
+        
+        Ok(WindowStmt {
+            window_type,
+            time_column,
+            span: start.merge(end),
+        })
+    }
+
+    /// Parse an emit statement: emit { mode: updates, allowed_lateness: 5.minutes }
+    fn parse_emit(&mut self) -> Result<EmitStmt, ParseError> {
+        let start = self.expect(TokenKind::Emit)?.span;
+        self.expect(TokenKind::LBrace)?;
+        
+        let mut mode = EmitMode::Final;
+        let mut allowed_lateness = None;
+        
+        while !self.check(TokenKind::RBrace) {
+            let key = self.parse_ident_or_keyword()?;
+            self.expect(TokenKind::Colon)?;
+            
+            match key.name.as_str() {
+                "mode" => {
+                    let mode_name = self.parse_ident_or_keyword()?;
+                    mode = match mode_name.name.as_str() {
+                        "final" => EmitMode::Final,
+                        "updates" => EmitMode::Updates,
+                        "append" => EmitMode::Append,
+                        _ => {
+                            return Err(ParseError::unexpected_token(
+                                mode_name.span,
+                                "final, updates, or append",
+                                mode_name.name,
+                            ));
+                        }
+                    };
+                }
+                "allowed_lateness" => {
+                    allowed_lateness = Some(self.parse_duration()?);
+                }
+                _ => {
+                    // Skip unknown keys
+                    let _ = self.parse_expr()?;
+                }
+            }
+            
+            // Optional comma
+            let _ = self.check_and_advance(TokenKind::Comma);
+        }
+        
+        let end = self.expect(TokenKind::RBrace)?.span;
+        
+        Ok(EmitStmt {
+            config: EmitConfig {
+                mode,
+                allowed_lateness,
+            },
             span: start.merge(end),
         })
     }
@@ -1316,6 +1460,136 @@ mod tests {
             }
         } else {
             panic!("Expected schema");
+        }
+    }
+
+    #[test]
+    fn test_parse_stream() {
+        let source = r#"
+            stream events from kafka("events-topic") {
+                schema: Event
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Stream(stream) = &program.items[0] {
+            assert_eq!(stream.name.name, "events");
+            assert_eq!(stream.source_type, "kafka");
+            assert_eq!(stream.path, "events-topic");
+        } else {
+            panic!("Expected stream");
+        }
+    }
+
+    #[test]
+    fn test_parse_tumbling_window() {
+        let source = r#"
+            pipeline hourly_counts {
+                from events
+                window tumbling(1.hours) on event_time
+                select { count: count(x) }
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Pipeline(pipeline) = &program.items[0] {
+            assert_eq!(pipeline.statements.len(), 3);
+            if let Statement::Window(window) = &pipeline.statements[1] {
+                assert_eq!(window.time_column.name, "event_time");
+                if let WindowType::Tumbling(duration) = &window.window_type {
+                    assert_eq!(duration.value, 1);
+                } else {
+                    panic!("Expected tumbling window");
+                }
+            } else {
+                panic!("Expected window statement");
+            }
+        } else {
+            panic!("Expected pipeline");
+        }
+    }
+
+    #[test]
+    fn test_parse_sliding_window() {
+        let source = r#"
+            pipeline rolling_avg {
+                from events
+                window sliding(1.hours, 15.minutes) on ts
+                select { avg: avg(value) }
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Pipeline(pipeline) = &program.items[0] {
+            if let Statement::Window(window) = &pipeline.statements[1] {
+                if let WindowType::Sliding { size, slide } = &window.window_type {
+                    assert_eq!(size.value, 1);
+                    assert_eq!(slide.value, 15);
+                } else {
+                    panic!("Expected sliding window");
+                }
+            } else {
+                panic!("Expected window statement");
+            }
+        } else {
+            panic!("Expected pipeline");
+        }
+    }
+
+    #[test]
+    fn test_parse_emit() {
+        let source = r#"
+            pipeline early_results {
+                from events
+                window tumbling(1.hours) on ts
+                emit { mode: updates, allowed_lateness: 5.minutes }
+                select { count: count(x) }
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Pipeline(pipeline) = &program.items[0] {
+            if let Statement::Emit(emit) = &pipeline.statements[2] {
+                assert!(matches!(emit.config.mode, EmitMode::Updates));
+                assert!(emit.config.allowed_lateness.is_some());
+                assert_eq!(emit.config.allowed_lateness.as_ref().unwrap().value, 5);
+            } else {
+                panic!("Expected emit statement");
+            }
+        } else {
+            panic!("Expected pipeline");
+        }
+    }
+
+    #[test]
+    fn test_parse_duration_literal() {
+        let source = r#"
+            pipeline session_example {
+                from events
+                window session(30.minutes) on ts
+                select { x: x }
+            }
+        "#;
+        let result = parse(source);
+        assert!(result.is_ok());
+        let program = result.unwrap();
+        if let Item::Pipeline(pipeline) = &program.items[0] {
+            if let Statement::Window(window) = &pipeline.statements[1] {
+                if let WindowType::Session(duration) = &window.window_type {
+                    assert_eq!(duration.value, 30);
+                    assert!(matches!(duration.unit, DurationUnit::Minutes));
+                } else {
+                    panic!("Expected session window");
+                }
+            } else {
+                panic!("Expected window statement");
+            }
+        } else {
+            panic!("Expected pipeline");
         }
     }
 }
