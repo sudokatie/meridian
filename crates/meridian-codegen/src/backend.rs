@@ -683,4 +683,40 @@ mod tests {
         let sql = generate_expr(&expr);
         assert_eq!(sql, "CASE WHEN (\"x\" > 0) THEN 'positive' END");
     }
+
+    #[test]
+    fn test_generate_tumbling_window() {
+        let ir = IrNode::Window {
+            input: Box::new(IrNode::Scan {
+                source: "events".to_string(),
+                columns: vec![],
+            }),
+            window_type: meridian_ir::IrWindowType::Tumbling { size_ms: 3600000 }, // 1 hour
+            time_column: "event_time".to_string(),
+        };
+        let backend = DuckDbBackend;
+        let sql = backend.generate(&ir).unwrap();
+        // Should use DATE_TRUNC for hourly windows
+        assert!(sql.contains("DATE_TRUNC('hour'"));
+        assert!(sql.contains("window_start"));
+        assert!(sql.contains("window_end"));
+        assert!(sql.contains("tumbling window"));
+    }
+
+    #[test]
+    fn test_generate_emit() {
+        let ir = IrNode::Emit {
+            input: Box::new(IrNode::Scan {
+                source: "events".to_string(),
+                columns: vec![],
+            }),
+            mode: meridian_ir::IrEmitMode::Updates,
+            allowed_lateness_ms: Some(300000), // 5 minutes
+        };
+        let backend = DuckDbBackend;
+        let sql = backend.generate(&ir).unwrap();
+        // Should include emit mode as comment
+        assert!(sql.contains("emit mode: updates"));
+        assert!(sql.contains("lateness: 300000ms"));
+    }
 }
