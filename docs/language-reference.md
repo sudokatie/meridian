@@ -591,6 +591,51 @@ test "math operations" {
 
 ---
 
+## Code Generation Targets
+
+Meridian compiles to different backends for execution.
+
+### DuckDB (Default)
+
+Generates SQL for local execution with DuckDB. Best for development and smaller datasets.
+
+```bash
+meridian run pipeline.mer
+```
+
+### Spark
+
+Generates PySpark code for distributed processing. Use `--target spark` to generate code.
+
+```bash
+meridian run pipeline.mer --target spark > pipeline.py
+spark-submit pipeline.py
+```
+
+Generated code includes:
+- SparkSession initialization
+- DataFrame operations mapping to Meridian pipeline
+- Window functions for streaming pipelines
+- Proper type mappings
+
+Example output:
+```python
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+
+spark = SparkSession.builder \
+    .appName("Meridian Pipeline") \
+    .getOrCreate()
+
+result = spark.read.parquet("orders")
+result = result.filter((F.col("status") == F.lit("completed")))
+result = result.select(F.col("id"), (F.col("amount") * F.lit(2)).alias("total"))
+result = result.orderBy(F.col("total").desc())
+result = result.limit(10)
+```
+
+---
+
 ## Grammar Summary (EBNF)
 
 ```ebnf
