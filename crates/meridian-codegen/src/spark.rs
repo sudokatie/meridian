@@ -526,4 +526,164 @@ mod tests {
         assert_eq!(format_interval(1000), "1 seconds");
         assert_eq!(format_interval(500), "500 milliseconds");
     }
+
+    #[test]
+    fn test_spark_limit() {
+        let ir = IrNode::Limit {
+            input: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            count: 10,
+        };
+        let backend = SparkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains(".limit(10)"));
+    }
+
+    #[test]
+    fn test_spark_union() {
+        let ir = IrNode::Union {
+            left: Box::new(IrNode::Scan {
+                source: "orders_2023".to_string(),
+                columns: vec![],
+            }),
+            right: Box::new(IrNode::Scan {
+                source: "orders_2024".to_string(),
+                columns: vec![],
+            }),
+        };
+        let backend = SparkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains("left_df.union(right_df)"));
+    }
+
+    #[test]
+    fn test_spark_sink() {
+        let ir = IrNode::Sink {
+            input: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            destination: "output/orders".to_string(),
+            format: "parquet".to_string(),
+        };
+        let backend = SparkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains(".write.mode(\"overwrite\").parquet("));
+    }
+
+    #[test]
+    fn test_spark_case_expression() {
+        let ir = IrNode::Project {
+            input: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            columns: vec![(
+                "category".to_string(),
+                IrExpr::Case {
+                    when_clauses: vec![
+                        (
+                            IrExpr::BinaryOp(
+                                Box::new(IrExpr::Column("amount".to_string())),
+                                BinOp::Ge,
+                                Box::new(IrExpr::Literal(IrLiteral::Int(1000))),
+                            ),
+                            IrExpr::Literal(IrLiteral::String("large".to_string())),
+                        ),
+                        (
+                            IrExpr::BinaryOp(
+                                Box::new(IrExpr::Column("amount".to_string())),
+                                BinOp::Ge,
+                                Box::new(IrExpr::Literal(IrLiteral::Int(100))),
+                            ),
+                            IrExpr::Literal(IrLiteral::String("medium".to_string())),
+                        ),
+                    ],
+                    else_clause: Some(Box::new(IrExpr::Literal(IrLiteral::String("small".to_string())))),
+                },
+            )],
+        };
+        let backend = SparkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains("F.when("));
+        assert!(code.contains(".when("));
+        assert!(code.contains(".otherwise("));
+    }
+
+    #[test]
+    fn test_spark_sliding_window() {
+        let ir = IrNode::Window {
+            input: Box::new(IrNode::Scan {
+                source: "events".to_string(),
+                columns: vec![],
+            }),
+            window_type: meridian_ir::IrWindowType::Sliding { 
+                size_ms: 3600000,  // 1 hour
+                slide_ms: 900000,  // 15 min
+            },
+            time_column: "event_time".to_string(),
+        };
+        let backend = SparkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains("F.window("));
+        assert!(code.contains("\"1 hours\""));
+        assert!(code.contains("\"15 minutes\""));
+    }
+
+    #[test]
+    fn test_spark_complex_pipeline() {
+        // Filter -> Project -> Sort -> Limit
+        let ir = IrNode::Limit {
+            input: Box::new(IrNode::Sort {
+                input: Box::new(IrNode::Project {
+                    input: Box::new(IrNode::Filter {
+                        input: Box::new(IrNode::Scan {
+                            source: "orders".to_string(),
+                            columns: vec![],
+                        }),
+                        predicate: IrExpr::BinaryOp(
+                            Box::new(IrExpr::Column("status".to_string())),
+                            BinOp::Eq,
+                            Box::new(IrExpr::Literal(IrLiteral::String("completed".to_string()))),
+                        ),
+                    }),
+                    columns: vec![
+                        ("id".to_string(), IrExpr::Column("id".to_string())),
+                        (
+                            "total".to_string(),
+                            IrExpr::BinaryOp(
+                                Box::new(IrExpr::Column("amount".to_string())),
+                                BinOp::Mul,
+                                Box::new(IrExpr::Literal(IrLiteral::Float(1.1))),
+                            ),
+                        ),
+                    ],
+                }),
+                by: vec![(IrExpr::Column("total".to_string()), SortOrder::Desc)],
+            }),
+            count: 10,
+        };
+        let backend = SparkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        // Verify the chain of operations
+        assert!(code.contains(".filter("));
+        assert!(code.contains(".select("));
+        assert!(code.contains(".orderBy("));
+        assert!(code.contains(".limit(10)"));
+        assert!(code.contains("\"completed\""));
+    }
+
+    #[test]
+    fn test_spark_custom_session_var() {
+        let ir = IrNode::Scan {
+            source: "orders".to_string(),
+            columns: vec![],
+        };
+        let backend = SparkBackend::with_session("my_spark");
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains("my_spark = SparkSession.builder"));
+        assert!(code.contains("my_spark.read.parquet"));
+    }
 }
