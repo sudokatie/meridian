@@ -118,10 +118,25 @@ meridian run hello.mer
 ## CLI
 
 ```bash
-meridian check file.mer     # Check syntax and types
-meridian run file.mer       # Execute pipeline
-meridian test               # Run tests
-meridian fmt file.mer       # Format code
+meridian check file.mer              # Check syntax and types
+meridian run file.mer                # Execute pipeline (DuckDB)
+meridian run file.mer --target spark # Generate PySpark code
+meridian test                        # Run tests
+meridian fmt file.mer                # Format code
+```
+
+### Backends
+
+**DuckDB (default):** Generates SQL and executes locally. Great for development and smaller datasets.
+
+**Spark:** Generates PySpark code for distributed processing. Use `--target spark` to generate code you can run on a Spark cluster.
+
+```bash
+# Generate PySpark code
+meridian run pipeline.mer --target spark > pipeline.py
+
+# Run on Spark
+spark-submit pipeline.py
 ```
 
 ---
