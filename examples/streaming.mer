@@ -1,0 +1,70 @@
+-- Streaming Examples
+-- Demonstrates Meridian's streaming capabilities
+
+-- Event schema for clickstream data
+schema ClickEvent {
+    user_id: string
+    page_url: string
+    event_type: enum("view", "click", "scroll", "submit")
+    timestamp: timestamp
+}
+
+-- Streaming source with watermark
+stream clicks from kafka("clickstream") {
+    schema: ClickEvent
+    watermark: timestamp - 5.minutes
+}
+
+-- Tumbling window: hourly page view counts
+pipeline hourly_views {
+    from clicks
+    where event_type == "view"
+    window tumbling(1.hour) on timestamp
+    group by page_url
+    select {
+        window_start,
+        window_end,
+        page_url,
+        view_count: count()
+    }
+    order by view_count desc
+}
+
+-- Sliding window: rolling engagement metrics
+pipeline rolling_engagement {
+    from clicks
+    window sliding(1.hour, 15.minutes) on timestamp
+    select {
+        window_start,
+        window_end,
+        total_events: count(),
+        unique_users: count(user_id)
+    }
+}
+
+-- Session window: user session analysis
+pipeline user_sessions {
+    from clicks
+    window session(30.minutes) on timestamp
+    group by user_id
+    select {
+        user_id,
+        session_start: window_start,
+        session_end: window_end,
+        page_views: count(),
+        unique_pages: count(page_url)
+    }
+}
+
+-- Emit with updates for real-time dashboards
+pipeline realtime_metrics {
+    from clicks
+    window tumbling(1.hour) on timestamp
+    emit { mode: updates, allowed_lateness: 2.minutes }
+    group by event_type
+    select {
+        window_start,
+        event_type,
+        count: count()
+    }
+}

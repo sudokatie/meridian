@@ -223,6 +223,64 @@ meridian test
 
 ---
 
+## Streaming Quickstart
+
+Meridian supports streaming data processing with windows and watermarks.
+
+### Streaming Source
+
+Declare a streaming source with a watermark:
+
+```meridian
+schema Event {
+    user_id: string
+    action: string
+    timestamp: timestamp
+}
+
+stream events from kafka("events-topic") {
+    schema: Event
+    watermark: timestamp - 5.minutes
+}
+```
+
+### Windowed Aggregation
+
+Use windows to group streaming data by time:
+
+```meridian
+pipeline hourly_stats {
+    from events
+    window tumbling(1.hour) on timestamp
+    group by action
+    select {
+        window_start,
+        window_end,
+        action,
+        count: count()
+    }
+}
+```
+
+### Window Types
+
+- **Tumbling**: Fixed, non-overlapping windows - `tumbling(1.hour)`
+- **Sliding**: Overlapping windows - `sliding(1.hour, 15.minutes)`
+- **Session**: Activity-based windows - `session(30.minutes)`
+
+### Temporal Joins
+
+Join streaming sources with time bounds:
+
+```meridian
+pipeline enriched_clicks {
+    from clicks
+    join impressions within 5.minutes on clicks.user_id == impressions.user_id
+}
+```
+
+---
+
 ## Project Structure
 
 For larger projects, organize your code:

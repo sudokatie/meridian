@@ -47,9 +47,9 @@ You describe what you want. Meridian figures out how.
 
 ## Status
 
-**v0.1.0** - Complete
+**v0.2.0** - In Progress
 
-Features:
+Core Features (v0.1):
 - Full lexer and recursive descent parser
 - Type system with inference
 - IR with optimization passes
@@ -57,10 +57,17 @@ Features:
 - CLI: check, run, test, fmt
 - Test framework
 
+Streaming Features (v0.2):
+- Stream declarations with watermarks
+- Tumbling, sliding, and session windows
+- Emit modes (final, updates, append)
+- Temporal joins with `within` bounds
+- DuckDB batch simulation
+
 ## Roadmap
 
-### v0.2 (Partial)
-- [ ] Streaming support with windowing
+### v0.2 (In Progress)
+- [x] Streaming support with windowing
 - [ ] Spark backend (PySpark generation)
 - [x] Match expression to SQL CASE conversion
 - [x] Source schema type checking improvements
@@ -165,6 +172,27 @@ test "classify handles edge cases" {
   assert classify(1000) == "large"
   assert classify(100) == "medium"
   assert classify(99) == "small"
+}
+```
+
+### Streaming
+
+```meridian
+stream events from kafka("events-topic") {
+  schema: Event
+  watermark: timestamp - 5.minutes
+}
+
+pipeline hourly_counts {
+  from events
+  window tumbling(1.hour) on timestamp
+  group by category
+  select {
+    window_start,
+    window_end,
+    category,
+    count: count()
+  }
 }
 ```
 

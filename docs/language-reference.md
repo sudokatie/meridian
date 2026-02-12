@@ -308,6 +308,143 @@ sink alerts to file("output/alerts.json") {
 
 ---
 
+## Streaming
+
+Meridian supports streaming data processing with windows and watermarks.
+
+### Streaming Sources
+
+Declare streaming data inputs:
+
+```meridian
+stream events from kafka("events-topic") {
+    schema: Event
+    watermark: event_time - 5.minutes
+}
+
+stream clicks from pubsub("clicks-subscription") {
+    schema: ClickEvent
+    watermark: timestamp
+}
+```
+
+### Duration Literals
+
+Durations are used for windows, watermarks, and temporal joins:
+
+```meridian
+5.seconds
+10.minutes
+1.hour
+24.hours
+7.days
+```
+
+### Watermarks
+
+Watermarks define how out-of-order events are handled:
+
+```meridian
+stream events from kafka("topic") {
+    schema: Event
+    watermark: event_time - 5.minutes  -- Allow 5 min late data
+}
+```
+
+The watermark expression must be a timestamp column, optionally minus a duration for allowed lateness.
+
+### Windows
+
+Group streaming data into time-based windows:
+
+**Tumbling Windows:**
+Fixed-size, non-overlapping windows.
+
+```meridian
+pipeline hourly_counts {
+    from events
+    window tumbling(1.hour) on event_time
+    group by category
+    select {
+        window_start,
+        window_end,
+        category,
+        count: count()
+    }
+}
+```
+
+**Sliding Windows:**
+Fixed-size, overlapping windows.
+
+```meridian
+pipeline rolling_avg {
+    from events
+    window sliding(1.hour, 15.minutes) on event_time  -- 1h window, 15m slide
+    select {
+        window_start,
+        window_end,
+        avg_value: avg(value)
+    }
+}
+```
+
+**Session Windows:**
+Dynamic windows based on activity gaps.
+
+```meridian
+pipeline user_sessions {
+    from clicks
+    window session(30.minutes) on timestamp  -- 30min inactivity gap
+    group by user_id
+    select {
+        window_start,
+        window_end,
+        user_id,
+        page_views: count()
+    }
+}
+```
+
+### Emit Modes
+
+Control when results are emitted:
+
+```meridian
+pipeline updates_stream {
+    from events
+    window tumbling(1.hour) on event_time
+    emit { mode: updates, allowed_lateness: 5.minutes }
+    select { window_start, total: sum(value) }
+}
+```
+
+| Mode | Description |
+|------|-------------|
+| `final` | Emit only when window closes |
+| `updates` | Emit updates as data arrives |
+| `append` | Emit only new complete windows |
+
+### Temporal Joins
+
+Join streaming sources with temporal bounds:
+
+```meridian
+pipeline enriched_events {
+    from clicks
+    join impressions within 5.minutes on clicks.user_id == impressions.user_id
+    select {
+        click_time: clicks.timestamp,
+        impression_time: impressions.timestamp,
+        user_id: clicks.user_id
+    }
+}
+```
+
+Stream-stream joins require the `within` clause to bound the join window.
+
+---
+
 ## Functions
 
 ### User-Defined Functions
