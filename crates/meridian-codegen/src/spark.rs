@@ -248,6 +248,7 @@ from pyspark.sql.window import Window"#.to_string()
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn generate_expr(&self, expr: &IrExpr) -> String {
         match expr {
             IrExpr::Column(name) => {

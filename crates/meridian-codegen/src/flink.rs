@@ -235,6 +235,7 @@ from pyflink.table.window import Tumble, Slide, Session"#.to_string()
         }
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn generate_expr(&self, expr: &IrExpr) -> String {
         match expr {
             IrExpr::Column(name) => format!("col(\"{}\")", name),
