@@ -1,0 +1,13 @@
+-- Simple test for Spark backend
+
+source orders from file("data/orders.parquet")
+
+pipeline filtered_orders {
+    from orders
+    where amount > 100
+    select {
+        id,
+        doubled: amount * 2
+    }
+    limit 10
+}

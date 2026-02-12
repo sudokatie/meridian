@@ -7,7 +7,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use miette::Report;
-use meridian_codegen::{Backend, DuckDbBackend};
+use meridian_codegen::{Backend, DuckDbBackend, SparkBackend};
 use meridian_ir::{build_pipeline, optimize};
 use meridian_parser::Item;
 use meridian_runtime::Executor;
@@ -48,6 +48,9 @@ enum Command {
         /// Output file (writes results instead of printing)
         #[arg(short, long)]
         output: Option<PathBuf>,
+        /// Code generation target (duckdb, spark)
+        #[arg(long, default_value = "duckdb")]
+        target: String,
     },
     /// Run tests
     Test {
@@ -92,8 +95,8 @@ fn main() -> ExitCode {
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Command::Check { file } => cmd_check(&file),
-        Command::Run { file, pipeline, dry_run, verbose, output } => {
-            cmd_run(&file, pipeline.as_deref(), dry_run, verbose, output.as_deref())
+        Command::Run { file, pipeline, dry_run, verbose, output, target } => {
+            cmd_run(&file, pipeline.as_deref(), dry_run, verbose, output.as_deref(), &target)
         }
         Command::Test { filter } => cmd_test(filter.as_deref()),
         Command::Fmt { file, check } => cmd_fmt(&file, check),
@@ -144,6 +147,7 @@ fn cmd_run(
     dry_run: bool,
     verbose: bool,
     output: Option<&Path>,
+    target: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = std::fs::read_to_string(file)?;
     let base_dir = file.parent().unwrap_or(Path::new("."));
@@ -224,7 +228,8 @@ fn cmd_run(
         }
     }
     
-    let backend = DuckDbBackend;
+    // Select backend based on target
+    let is_spark = target == "spark";
     
     for pipeline in pipelines {
         if verbose {
@@ -251,14 +256,33 @@ fn cmd_run(
             println!("Optimization complete");
         }
         
-        // Generate SQL
-        let sql = match backend.generate(&optimized) {
-            Ok(sql) => sql,
-            Err(e) => {
-                eprintln!("codegen error for '{}': {}", pipeline.name.name, e);
-                continue;
+        // Generate code
+        let code = if is_spark {
+            let backend = SparkBackend::new();
+            match backend.generate(&optimized) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("codegen error for '{}': {}", pipeline.name.name, e);
+                    continue;
+                }
+            }
+        } else {
+            let backend = DuckDbBackend;
+            match backend.generate(&optimized) {
+                Ok(code) => code,
+                Err(e) => {
+                    eprintln!("codegen error for '{}': {}", pipeline.name.name, e);
+                    continue;
+                }
             }
         };
+        
+        if is_spark {
+            println!("Generated PySpark:\n{}\n", code);
+            continue; // Spark doesn't execute locally
+        }
+        
+        let sql = code;
         
         if dry_run || verbose {
             println!("Generated SQL:\n{}\n", sql);
