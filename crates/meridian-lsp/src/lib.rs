@@ -3,11 +3,34 @@
 //! Provides IDE support for the Meridian data transformation language.
 
 use dashmap::DashMap;
-use meridian_parser::parse;
+use meridian_parser::{parse, Item, Program};
 use meridian_types::check_program;
+use std::collections::HashMap;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
+
+/// A named definition in the source
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct Definition {
+    /// The name of the definition
+    name: String,
+    /// The kind of definition
+    kind: DefinitionKind,
+    /// The byte span of the definition
+    span: (usize, usize),
+}
+
+/// Kind of definition
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DefinitionKind {
+    Schema,
+    Function,
+    Source,
+    Stream,
+    Pipeline,
+}
 
 /// Document state stored for each open file
 #[derive(Debug)]
@@ -15,7 +38,63 @@ struct Document {
     /// The document content
     content: String,
     /// The document version
+    #[allow(dead_code)]
     version: i32,
+    /// Definitions in this document
+    definitions: HashMap<String, Definition>,
+}
+
+/// Collect all definitions from a parsed program
+fn collect_definitions(program: &Program) -> HashMap<String, Definition> {
+    let mut defs = HashMap::new();
+    
+    for item in &program.items {
+        match item {
+            Item::Schema(schema) => {
+                defs.insert(schema.name.name.clone(), Definition {
+                    name: schema.name.name.clone(),
+                    kind: DefinitionKind::Schema,
+                    span: (schema.span.start, schema.span.end),
+                });
+            }
+            Item::Function(func) => {
+                defs.insert(func.name.name.clone(), Definition {
+                    name: func.name.name.clone(),
+                    kind: DefinitionKind::Function,
+                    span: (func.span.start, func.span.end),
+                });
+            }
+            Item::Source(src) => {
+                defs.insert(src.name.name.clone(), Definition {
+                    name: src.name.name.clone(),
+                    kind: DefinitionKind::Source,
+                    span: (src.span.start, src.span.end),
+                });
+            }
+            Item::Stream(stream) => {
+                defs.insert(stream.name.name.clone(), Definition {
+                    name: stream.name.name.clone(),
+                    kind: DefinitionKind::Stream,
+                    span: (stream.span.start, stream.span.end),
+                });
+            }
+            Item::Sink(_) => {
+                // Sinks reference pipelines, they don't define new names
+            }
+            Item::Pipeline(pipeline) => {
+                defs.insert(pipeline.name.name.clone(), Definition {
+                    name: pipeline.name.name.clone(),
+                    kind: DefinitionKind::Pipeline,
+                    span: (pipeline.span.start, pipeline.span.end),
+                });
+            }
+            Item::Test(_) => {
+                // Tests don't define reusable names
+            }
+        }
+    }
+    
+    defs
 }
 
 /// The Meridian Language Server
@@ -37,11 +116,17 @@ impl MeridianLanguageServer {
 
     /// Analyze a document and publish diagnostics
     async fn analyze_document(&self, uri: &Url) {
-        let Some(doc) = self.documents.get(uri) else {
+        let Some(mut doc) = self.documents.get_mut(uri) else {
             return;
         };
 
         let content = doc.content.clone();
+        
+        // Parse and collect definitions
+        if let Ok(ast) = parse(&content) {
+            doc.definitions = collect_definitions(&ast);
+        }
+        
         drop(doc); // Release the lock
 
         let diagnostics = self.get_diagnostics(&content);
@@ -144,6 +229,7 @@ impl LanguageServer for MeridianLanguageServer {
                     trigger_characters: Some(vec![".".to_string()]),
                     ..Default::default()
                 }),
+                definition_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
             server_info: Some(ServerInfo {
@@ -170,7 +256,11 @@ impl LanguageServer for MeridianLanguageServer {
 
         self.documents.insert(
             uri.clone(),
-            Document { content, version },
+            Document { 
+                content, 
+                version, 
+                definitions: HashMap::new() 
+            },
         );
 
         self.analyze_document(&uri).await;
@@ -187,11 +277,39 @@ impl LanguageServer for MeridianLanguageServer {
                 Document {
                     content: change.text,
                     version,
+                    definitions: HashMap::new(),
                 },
             );
 
             self.analyze_document(&uri).await;
         }
+    }
+
+    async fn goto_definition(
+        &self,
+        params: GotoDefinitionParams,
+    ) -> Result<Option<GotoDefinitionResponse>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let Some(doc) = self.documents.get(uri) else {
+            return Ok(None);
+        };
+
+        // Get the word at the position
+        let offset = position_to_offset(position, &doc.content);
+        let word = get_word_at_offset(&doc.content, offset);
+
+        // Look up the definition
+        if let Some(def) = doc.definitions.get(&word) {
+            let range = span_to_range(def.span, &doc.content);
+            return Ok(Some(GotoDefinitionResponse::Scalar(Location {
+                uri: uri.clone(),
+                range,
+            })));
+        }
+
+        Ok(None)
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -398,5 +516,84 @@ mod tests {
         assert_eq!(range.start.character, 0);
         assert_eq!(range.end.line, 1);
         assert_eq!(range.end.character, 5);
+    }
+
+    #[test]
+    fn test_collect_definitions_schema() {
+        let source = r#"
+            schema User {
+                id: string
+                name: string
+            }
+
+            pipeline main {
+                from User
+                select {
+                    id,
+                    name
+                }
+            }
+        "#;
+        let ast = parse(source).unwrap();
+        let defs = collect_definitions(&ast);
+        
+        assert!(defs.contains_key("User"));
+        assert_eq!(defs.get("User").unwrap().kind, DefinitionKind::Schema);
+        
+        assert!(defs.contains_key("main"));
+        assert_eq!(defs.get("main").unwrap().kind, DefinitionKind::Pipeline);
+    }
+
+    #[test]
+    fn test_collect_definitions_function() {
+        let source = r#"
+            fn classify(x: decimal) -> string {
+                match {
+                    x >= 100 -> "large"
+                    _ -> "small"
+                }
+            }
+
+            pipeline classified {
+                from data
+                select {
+                    result: classify(value)
+                }
+            }
+        "#;
+        let ast = parse(source).unwrap();
+        let defs = collect_definitions(&ast);
+        
+        assert!(defs.contains_key("classify"));
+        assert_eq!(defs.get("classify").unwrap().kind, DefinitionKind::Function);
+        
+        assert!(defs.contains_key("classified"));
+        assert_eq!(defs.get("classified").unwrap().kind, DefinitionKind::Pipeline);
+    }
+
+    #[test]
+    fn test_collect_definitions_source() {
+        let source = r#"
+schema Event {
+    id: string
+    value: int
+}
+
+source events from file("events.csv") {
+    schema: Event
+}
+
+pipeline main {
+    from events
+}
+"#;
+        let ast = parse(source).unwrap();
+        let defs = collect_definitions(&ast);
+        
+        assert!(defs.contains_key("events"));
+        assert_eq!(defs.get("events").unwrap().kind, DefinitionKind::Source);
+        
+        assert!(defs.contains_key("Event"));
+        assert_eq!(defs.get("Event").unwrap().kind, DefinitionKind::Schema);
     }
 }
