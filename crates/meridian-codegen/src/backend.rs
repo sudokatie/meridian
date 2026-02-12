@@ -205,6 +205,68 @@ fn generate_sql(ir: &IrNode) -> Result<String, CodegenError> {
                 inner, destination, format.to_uppercase()
             ))
         }
+        
+        IrNode::Window { input, window_type, time_column } => {
+            let inner = generate_sql(input)?;
+            // For DuckDB batch simulation, use DATE_TRUNC for tumbling windows
+            let (bucket_expr, comment) = match window_type {
+                meridian_ir::IrWindowType::Tumbling { size_ms } => {
+                    let bucket = time_bucket_expr(time_column, *size_ms);
+                    (bucket, format!("-- tumbling window: {}ms", size_ms))
+                }
+                meridian_ir::IrWindowType::Sliding { size_ms, slide_ms } => {
+                    // Sliding windows are complex in batch - use tumbling as approximation
+                    let bucket = time_bucket_expr(time_column, *slide_ms);
+                    (bucket, format!("-- sliding window: {}ms size, {}ms slide (approximated)", size_ms, slide_ms))
+                }
+                meridian_ir::IrWindowType::Session { gap_ms } => {
+                    // Session windows require stateful processing - not supported in batch
+                    let bucket = time_bucket_expr(time_column, *gap_ms);
+                    (bucket, format!("-- session window: {}ms gap (approximated)", gap_ms))
+                }
+            };
+            // Add window_start and window_end columns
+            Ok(format!(
+                "{}\nSELECT *, {} AS window_start, {} + INTERVAL '1 second' * {} / 1000 AS window_end FROM ({}) AS _t",
+                comment, bucket_expr, bucket_expr, 
+                match window_type {
+                    meridian_ir::IrWindowType::Tumbling { size_ms } => *size_ms,
+                    meridian_ir::IrWindowType::Sliding { size_ms, .. } => *size_ms,
+                    meridian_ir::IrWindowType::Session { gap_ms } => *gap_ms,
+                },
+                inner
+            ))
+        }
+        
+        IrNode::Emit { input, mode, allowed_lateness_ms } => {
+            let inner = generate_sql(input)?;
+            // Emit configuration is a streaming concept - in batch, just pass through with comment
+            let mode_str = match mode {
+                meridian_ir::IrEmitMode::Final => "final",
+                meridian_ir::IrEmitMode::Updates => "updates",
+                meridian_ir::IrEmitMode::Append => "append",
+            };
+            let lateness = allowed_lateness_ms.map(|ms| format!(", lateness: {}ms", ms)).unwrap_or_default();
+            Ok(format!("-- emit mode: {}{}\n{}", mode_str, lateness, inner))
+        }
+    }
+}
+
+/// Generate time bucket expression for windowing.
+fn time_bucket_expr(time_column: &str, size_ms: i64) -> String {
+    let col = quote_ident(time_column);
+    if size_ms >= 86400000 {
+        // Days
+        format!("DATE_TRUNC('day', {})", col)
+    } else if size_ms >= 3600000 {
+        // Hours
+        format!("DATE_TRUNC('hour', {})", col)
+    } else if size_ms >= 60000 {
+        // Minutes
+        format!("DATE_TRUNC('minute', {})", col)
+    } else {
+        // Seconds or smaller - use epoch math
+        format!("TO_TIMESTAMP(FLOOR(EXTRACT(EPOCH FROM {}) / {}) * {})", col, size_ms / 1000, size_ms / 1000)
     }
 }
 
@@ -231,6 +293,7 @@ fn generate_expr(expr: &IrExpr) -> String {
             IrLiteral::String(s) => quote_string(s),
             IrLiteral::Bool(b) => if *b { "TRUE" } else { "FALSE" }.to_string(),
             IrLiteral::Null => "NULL".to_string(),
+            IrLiteral::Duration(ms) => format!("INTERVAL '{} milliseconds'", ms),
         },
         
         IrExpr::BinaryOp(left, op, right) => {

@@ -99,6 +99,17 @@ fn push_predicates(node: IrNode) -> IrNode {
             destination,
             format,
         },
+        // Streaming nodes - pass through
+        IrNode::Window { input, window_type, time_column } => IrNode::Window {
+            input: Box::new(push_predicates(*input)),
+            window_type,
+            time_column,
+        },
+        IrNode::Emit { input, mode, allowed_lateness_ms } => IrNode::Emit {
+            input: Box::new(push_predicates(*input)),
+            mode,
+            allowed_lateness_ms,
+        },
         // Scan nodes are leaves
         scan @ IrNode::Scan { .. } => scan,
     }
@@ -256,6 +267,13 @@ fn collect_columns_inner(node: &IrNode, cols: &mut Vec<String>) {
         IrNode::Sink { input, .. } => {
             collect_columns_inner(input, cols);
         }
+        IrNode::Window { input, time_column, .. } => {
+            collect_columns_inner(input, cols);
+            cols.push(time_column.clone());
+        }
+        IrNode::Emit { input, .. } => {
+            collect_columns_inner(input, cols);
+        }
     }
 }
 
@@ -357,6 +375,22 @@ fn push_projections(node: IrNode, required: &[String]) -> IrNode {
             destination,
             format,
         },
+        IrNode::Window { input, window_type, time_column } => {
+            let mut needed = required.to_vec();
+            if !needed.contains(&time_column) {
+                needed.push(time_column.clone());
+            }
+            IrNode::Window {
+                input: Box::new(push_projections(*input, &needed)),
+                window_type,
+                time_column,
+            }
+        }
+        IrNode::Emit { input, mode, allowed_lateness_ms } => IrNode::Emit {
+            input: Box::new(push_projections(*input, required)),
+            mode,
+            allowed_lateness_ms,
+        },
     }
 }
 
@@ -424,6 +458,16 @@ fn fold_constants(node: IrNode) -> IrNode {
             input: Box::new(fold_constants(*input)),
             destination,
             format,
+        },
+        IrNode::Window { input, window_type, time_column } => IrNode::Window {
+            input: Box::new(fold_constants(*input)),
+            window_type,
+            time_column,
+        },
+        IrNode::Emit { input, mode, allowed_lateness_ms } => IrNode::Emit {
+            input: Box::new(fold_constants(*input)),
+            mode,
+            allowed_lateness_ms,
         },
         scan @ IrNode::Scan { .. } => scan,
     }

@@ -24,6 +24,9 @@ pub fn infer_expr(expr: &Expr, env: &TypeEnv) -> Result<Type, TypeError> {
                 Ok(Type::List(Box::new(elem_ty)))
             }
         }
+        
+        // Duration literals
+        Expr::Duration(_) => Ok(Type::Duration),
 
         // Identifiers
         Expr::Ident(ident) => {

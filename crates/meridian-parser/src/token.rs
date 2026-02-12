@@ -75,6 +75,40 @@ pub enum TokenKind {
     #[token("expect")]
     Expect,
 
+    // Streaming keywords
+    #[token("stream")]
+    Stream,
+    #[token("window")]
+    Window,
+    #[token("tumbling")]
+    Tumbling,
+    #[token("sliding")]
+    Sliding,
+    #[token("session")]
+    Session,
+    #[token("emit")]
+    Emit,
+    #[token("within")]
+    Within,
+    #[token("watermark")]
+    Watermark,
+    #[token("late")]
+    Late,
+    #[token("continuous")]
+    Continuous,
+
+    // Duration units (used with number.unit syntax)
+    #[token("seconds")]
+    Seconds,
+    #[token("minutes")]
+    Minutes,
+    #[token("hours")]
+    Hours,
+    #[token("hour")]
+    Hour,
+    #[token("days")]
+    Days,
+
     // Identifiers
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Ident(String),
@@ -188,6 +222,21 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Assert => write!(f, "assert"),
             TokenKind::Given => write!(f, "given"),
             TokenKind::Expect => write!(f, "expect"),
+            TokenKind::Stream => write!(f, "stream"),
+            TokenKind::Window => write!(f, "window"),
+            TokenKind::Tumbling => write!(f, "tumbling"),
+            TokenKind::Sliding => write!(f, "sliding"),
+            TokenKind::Session => write!(f, "session"),
+            TokenKind::Emit => write!(f, "emit"),
+            TokenKind::Within => write!(f, "within"),
+            TokenKind::Watermark => write!(f, "watermark"),
+            TokenKind::Late => write!(f, "late"),
+            TokenKind::Continuous => write!(f, "continuous"),
+            TokenKind::Seconds => write!(f, "seconds"),
+            TokenKind::Minutes => write!(f, "minutes"),
+            TokenKind::Hours => write!(f, "hours"),
+            TokenKind::Hour => write!(f, "hour"),
+            TokenKind::Days => write!(f, "days"),
             TokenKind::Ident(s) => write!(f, "{}", s),
             TokenKind::String(s) => write!(f, "\"{}\"", s),
             TokenKind::Int(n) => write!(f, "{}", n),

@@ -26,11 +26,37 @@ fn format_item(item: &Item) -> String {
     match item {
         Item::Schema(schema) => format_schema(schema),
         Item::Source(source) => format_source(source),
+        Item::Stream(stream) => format_stream(stream),
         Item::Sink(sink) => format_sink(sink),
         Item::Pipeline(pipeline) => format_pipeline(pipeline),
         Item::Function(func) => format_function(func),
         Item::Test(test) => format_test(test),
     }
+}
+
+fn format_stream(stream: &StreamSource) -> String {
+    let mut out = format!(
+        "stream {} from {}(\"{}\") {{",
+        stream.name.name, stream.source_type, stream.path
+    );
+    if !stream.config.is_empty() {
+        out.push('\n');
+        for (key, value) in &stream.config {
+            out.push_str(&format!("    {}: {}\n", key.name, format_expr(value)));
+        }
+    }
+    out.push('}');
+    out
+}
+
+fn format_duration(d: &Duration) -> String {
+    let unit = match d.unit {
+        DurationUnit::Seconds => "seconds",
+        DurationUnit::Minutes => "minutes",
+        DurationUnit::Hours => "hours",
+        DurationUnit::Days => "days",
+    };
+    format!("{}.{}", d.value, unit)
 }
 
 fn format_schema(schema: &Schema) -> String {
@@ -145,9 +171,33 @@ fn format_statement(stmt: &Statement) -> String {
                 JoinKind::Right => "right ",
                 JoinKind::Full => "full ",
             };
-            format!("{}join {} on {}", kind, j.source.name, format_expr(&j.condition))
+            let within = j.within.as_ref()
+                .map(|d| format!(" within {}", format_duration(d)))
+                .unwrap_or_default();
+            format!("{}join {}{} on {}", kind, j.source.name, within, format_expr(&j.condition))
         }
         Statement::Union(u) => format!("union {}", u.pipeline.name),
+        Statement::Window(w) => {
+            let window_type = match &w.window_type {
+                WindowType::Tumbling(d) => format!("tumbling({})", format_duration(d)),
+                WindowType::Sliding { size, slide } => {
+                    format!("sliding({}, {})", format_duration(size), format_duration(slide))
+                }
+                WindowType::Session(d) => format!("session({})", format_duration(d)),
+            };
+            format!("window {} on {}", window_type, w.time_column.name)
+        }
+        Statement::Emit(e) => {
+            let mode = match e.config.mode {
+                EmitMode::Final => "final",
+                EmitMode::Updates => "updates",
+                EmitMode::Append => "append",
+            };
+            let lateness = e.config.allowed_lateness.as_ref()
+                .map(|d| format!(", allowed_lateness: {}", format_duration(d)))
+                .unwrap_or_default();
+            format!("emit {{ mode: {}{} }}", mode, lateness)
+        }
     }
 }
 
@@ -204,6 +254,7 @@ fn format_expr(expr: &Expr) -> String {
             let els: Vec<_> = elements.iter().map(format_expr).collect();
             format!("[{}]", els.join(", "))
         }
+        Expr::Duration(d) => format_duration(d),
         Expr::Ident(id) => id.name.clone(),
         Expr::Field(base, field, _) => format!("{}.{}", format_expr(base), field.name),
         Expr::Binary(left, op, right, _) => {

@@ -16,10 +16,14 @@ pub enum Type {
     Date,
     Time,
     Interval,
+    Duration,
     // Complex
     List(Box<Type>),
     Map(Box<Type>, Box<Type>),
     Struct(Vec<(String, Type)>),
+    // Streaming
+    Stream(Box<Type>),
+    Window,
     // Special
     Null,
     Nullable(Box<Type>),

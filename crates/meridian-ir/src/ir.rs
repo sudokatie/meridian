@@ -43,6 +43,34 @@ pub enum IrNode {
         destination: String,
         format: String,
     },
+    /// Windowed aggregation for streaming.
+    Window {
+        input: Box<IrNode>,
+        window_type: IrWindowType,
+        time_column: String,
+    },
+    /// Emit configuration for streaming results.
+    Emit {
+        input: Box<IrNode>,
+        mode: IrEmitMode,
+        allowed_lateness_ms: Option<i64>,
+    },
+}
+
+/// Window type for streaming aggregation.
+#[derive(Debug, Clone)]
+pub enum IrWindowType {
+    Tumbling { size_ms: i64 },
+    Sliding { size_ms: i64, slide_ms: i64 },
+    Session { gap_ms: i64 },
+}
+
+/// Emit mode for streaming results.
+#[derive(Debug, Clone, Copy)]
+pub enum IrEmitMode {
+    Final,
+    Updates,
+    Append,
 }
 
 /// An IR expression.
@@ -70,6 +98,8 @@ pub enum IrLiteral {
     String(String),
     Bool(bool),
     Null,
+    /// Duration in milliseconds.
+    Duration(i64),
 }
 
 /// An aggregate expression.

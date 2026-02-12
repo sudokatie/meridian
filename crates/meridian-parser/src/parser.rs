@@ -96,7 +96,8 @@ impl Parser {
     }
 
     fn parse_field_def(&mut self) -> Result<FieldDef, ParseError> {
-        let name = self.parse_ident()?;
+        // Allow keywords as field names (e.g., window, stream)
+        let name = self.parse_ident_or_keyword()?;
         self.expect(TokenKind::Colon)?;
         let ty = self.parse_type()?;
 
@@ -115,7 +116,8 @@ impl Parser {
             
             let mut fields = Vec::new();
             while !self.check(TokenKind::RBrace) {
-                let field_name = self.parse_ident()?;
+                // Allow keywords as field names
+                let field_name = self.parse_ident_or_keyword()?;
                 self.expect(TokenKind::Colon)?;
                 let field_type = self.parse_type()?;
                 fields.push((field_name, field_type));
@@ -472,12 +474,22 @@ impl Parser {
 
         self.expect(TokenKind::Join)?;
         let source = self.parse_ident()?;
+        
+        // Parse optional temporal bounds for stream joins
+        let within = if self.check(TokenKind::Within) {
+            self.advance();
+            Some(self.parse_duration()?)
+        } else {
+            None
+        };
+        
         self.expect(TokenKind::On)?;
         let condition = self.parse_expr()?;
 
         Ok(JoinStmt {
             kind,
             source,
+            within,
             span: start.merge(condition.span()),
             condition,
         })
@@ -489,6 +501,66 @@ impl Parser {
         Ok(UnionStmt {
             span: start.merge(pipeline.span),
             pipeline,
+        })
+    }
+
+    /// Parse a duration literal (e.g., 5.minutes, 1.hour).
+    fn parse_duration(&mut self) -> Result<Duration, ParseError> {
+        let value = match self.peek() {
+            Some(Token { kind: TokenKind::Int(n), .. }) => {
+                let n = *n;
+                self.advance();
+                n
+            }
+            Some(token) => {
+                return Err(ParseError::unexpected_token(
+                    token.span,
+                    "integer",
+                    format!("{}", token.kind),
+                ));
+            }
+            None => {
+                return Err(ParseError::unexpected_eof("integer"));
+            }
+        };
+        
+        let start = self.prev_span();
+        self.expect(TokenKind::Dot)?;
+        
+        let unit = match self.peek() {
+            Some(Token { kind: TokenKind::Seconds, .. }) => {
+                self.advance();
+                DurationUnit::Seconds
+            }
+            Some(Token { kind: TokenKind::Minutes, .. }) => {
+                self.advance();
+                DurationUnit::Minutes
+            }
+            Some(Token { kind: TokenKind::Hours | TokenKind::Hour, .. }) => {
+                self.advance();
+                DurationUnit::Hours
+            }
+            Some(Token { kind: TokenKind::Days, .. }) => {
+                self.advance();
+                DurationUnit::Days
+            }
+            Some(token) => {
+                return Err(ParseError::unexpected_token(
+                    token.span,
+                    "duration unit (seconds, minutes, hours, days)",
+                    format!("{}", token.kind),
+                ));
+            }
+            None => {
+                return Err(ParseError::unexpected_eof("duration unit"));
+            }
+        };
+        let end = self.prev_span();
+        
+        Ok(Duration {
+            value,
+            unit,
+            span: start.merge(end),
         })
     }
 
@@ -904,6 +976,22 @@ impl Parser {
                         | TokenKind::Assert
                         | TokenKind::Given
                         | TokenKind::Expect
+                        // Streaming keywords
+                        | TokenKind::Stream
+                        | TokenKind::Window
+                        | TokenKind::Tumbling
+                        | TokenKind::Sliding
+                        | TokenKind::Session
+                        | TokenKind::Emit
+                        | TokenKind::Within
+                        | TokenKind::Watermark
+                        | TokenKind::Late
+                        | TokenKind::Continuous
+                        | TokenKind::Seconds
+                        | TokenKind::Minutes
+                        | TokenKind::Hours
+                        | TokenKind::Hour
+                        | TokenKind::Days
                 ) {
                     self.advance();
                     Ok(Ident::new(name, span))

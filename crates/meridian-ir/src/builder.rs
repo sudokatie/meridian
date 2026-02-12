@@ -11,7 +11,7 @@ use meridian_parser::{
 use meridian_types::TypeEnv;
 use thiserror::Error;
 
-use crate::ir::{BinOp, IrExpr, IrLiteral, IrNode, JoinKind, SortOrder, UnaryOp};
+use crate::ir::{BinOp, IrEmitMode, IrExpr, IrLiteral, IrNode, IrWindowType, JoinKind, SortOrder, UnaryOp};
 
 /// Errors that can occur during IR building.
 #[derive(Error, Debug)]
@@ -167,6 +167,44 @@ impl<'a> IrBuilder<'a> {
                     right: Box::new(right),
                 })
             }
+            
+            Statement::Window(window_stmt) => {
+                let input = input.ok_or(BuildError::NoFromStatement)?;
+                let window_type = match &window_stmt.window_type {
+                    meridian_parser::WindowType::Tumbling(d) => {
+                        IrWindowType::Tumbling { size_ms: d.to_millis() }
+                    }
+                    meridian_parser::WindowType::Sliding { size, slide } => {
+                        IrWindowType::Sliding {
+                            size_ms: size.to_millis(),
+                            slide_ms: slide.to_millis(),
+                        }
+                    }
+                    meridian_parser::WindowType::Session(d) => {
+                        IrWindowType::Session { gap_ms: d.to_millis() }
+                    }
+                };
+                Ok(IrNode::Window {
+                    input: Box::new(input),
+                    window_type,
+                    time_column: window_stmt.time_column.name.clone(),
+                })
+            }
+            
+            Statement::Emit(emit_stmt) => {
+                let input = input.ok_or(BuildError::NoFromStatement)?;
+                let mode = match emit_stmt.config.mode {
+                    meridian_parser::EmitMode::Final => IrEmitMode::Final,
+                    meridian_parser::EmitMode::Updates => IrEmitMode::Updates,
+                    meridian_parser::EmitMode::Append => IrEmitMode::Append,
+                };
+                let allowed_lateness_ms = emit_stmt.config.allowed_lateness.map(|d| d.to_millis());
+                Ok(IrNode::Emit {
+                    input: Box::new(input),
+                    mode,
+                    allowed_lateness_ms,
+                })
+            }
         }
     }
 
@@ -279,6 +317,11 @@ impl<'a> IrBuilder<'a> {
                 // Non-null assertion - just pass through the inner expression
                 // The runtime will fail if null
                 self.build_expr(inner)
+            }
+            
+            Expr::Duration(d) => {
+                // Convert duration to milliseconds literal
+                Ok(IrExpr::Literal(IrLiteral::Duration(d.to_millis())))
             }
         }
     }

@@ -14,10 +14,50 @@ pub struct Program {
 pub enum Item {
     Schema(Schema),
     Source(Source),
+    Stream(StreamSource),
     Sink(Sink),
     Pipeline(Pipeline),
     Function(Function),
     Test(Test),
+}
+
+/// A streaming source definition.
+#[derive(Debug, Clone)]
+pub struct StreamSource {
+    pub name: Ident,
+    pub source_type: String,
+    pub path: String,
+    pub config: Vec<(Ident, Expr)>,
+    pub span: Span,
+}
+
+/// A duration literal (e.g., 5.minutes, 1.hour).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Duration {
+    pub value: i64,
+    pub unit: DurationUnit,
+    pub span: Span,
+}
+
+/// Duration units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DurationUnit {
+    Seconds,
+    Minutes,
+    Hours,
+    Days,
+}
+
+impl Duration {
+    /// Convert to milliseconds.
+    pub fn to_millis(&self) -> i64 {
+        match self.unit {
+            DurationUnit::Seconds => self.value * 1000,
+            DurationUnit::Minutes => self.value * 60 * 1000,
+            DurationUnit::Hours => self.value * 60 * 60 * 1000,
+            DurationUnit::Days => self.value * 24 * 60 * 60 * 1000,
+        }
+    }
 }
 
 /// A schema definition.
@@ -87,6 +127,52 @@ pub enum Statement {
     Limit(LimitStmt),
     Join(JoinStmt),
     Union(UnionStmt),
+    Window(WindowStmt),
+    Emit(EmitStmt),
+}
+
+/// A window statement for streaming aggregation.
+#[derive(Debug, Clone)]
+pub struct WindowStmt {
+    pub window_type: WindowType,
+    pub time_column: Ident,
+    pub span: Span,
+}
+
+/// Window type variants.
+#[derive(Debug, Clone)]
+pub enum WindowType {
+    /// Fixed-size, non-overlapping windows.
+    Tumbling(Duration),
+    /// Fixed-size, overlapping windows.
+    Sliding { size: Duration, slide: Duration },
+    /// Gap-based dynamic windows.
+    Session(Duration),
+}
+
+/// An emit statement for controlling streaming output.
+#[derive(Debug, Clone)]
+pub struct EmitStmt {
+    pub config: EmitConfig,
+    pub span: Span,
+}
+
+/// Emit configuration.
+#[derive(Debug, Clone)]
+pub struct EmitConfig {
+    pub mode: EmitMode,
+    pub allowed_lateness: Option<Duration>,
+}
+
+/// Emit mode for streaming results.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmitMode {
+    /// Emit once when window closes (default).
+    Final,
+    /// Emit on every update.
+    Updates,
+    /// Emit when window closes, then again for late data.
+    Append,
 }
 
 /// A from statement.
@@ -152,6 +238,8 @@ pub struct JoinStmt {
     pub kind: JoinKind,
     pub source: Ident,
     pub condition: Expr,
+    /// Temporal bounds for stream-stream joins.
+    pub within: Option<Duration>,
     pub span: Span,
 }
 
@@ -230,6 +318,7 @@ pub enum Expr {
     String(String, Span),
     Bool(bool, Span),
     List(Vec<Expr>, Span),
+    Duration(Duration),
 
     // References
     Ident(Ident),
@@ -256,6 +345,7 @@ impl Expr {
             Expr::String(_, s) => *s,
             Expr::Bool(_, s) => *s,
             Expr::List(_, s) => *s,
+            Expr::Duration(d) => d.span,
             Expr::Ident(i) => i.span,
             Expr::Field(_, _, s) => *s,
             Expr::Binary(_, _, _, s) => *s,

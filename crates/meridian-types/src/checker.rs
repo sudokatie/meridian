@@ -1,7 +1,7 @@
 //! Type checker for Meridian programs.
 
 use meridian_parser::{
-    Program, Item, Schema, Pipeline, Function, Source, Test,
+    Program, Item, Schema, Pipeline, Function, Source, StreamSource, Test,
     Statement, Expr, TypeExpr as AstTypeExpr,
 };
 
@@ -54,11 +54,35 @@ impl Checker {
         match item {
             Item::Schema(schema) => self.register_schema(schema),
             Item::Source(source) => self.register_source(source),
+            Item::Stream(stream) => self.register_stream(stream),
             Item::Sink(_) => {} // Sinks registered during check
             Item::Pipeline(pipeline) => self.register_pipeline(pipeline),
             Item::Function(func) => self.register_function(func),
             Item::Test(_) => {} // Tests don't need registration
         }
+    }
+    
+    fn register_stream(&mut self, stream: &StreamSource) {
+        // Similar to register_source but marks as streaming
+        let schema_name = stream.config.iter().find(|(k, _)| k.name == "schema");
+        
+        let inner_ty = if let Some((_, Expr::Ident(schema_ident))) = schema_name {
+            if let Some(schema) = self.env.get_schema(&schema_ident.name) {
+                Type::Struct(schema.fields.clone())
+            } else {
+                self.errors.push(TypeError::UndefinedSchema {
+                    name: schema_ident.name.clone(),
+                    span: schema_ident.span,
+                });
+                Type::Unknown
+            }
+        } else {
+            Type::Unknown
+        };
+        
+        // Wrap in Stream type to indicate streaming source
+        // Use define_source with streaming flag (we'll use path as marker for now)
+        self.env.define_source(&stream.name.name, Some("stream".to_string()), Type::Stream(Box::new(inner_ty)));
     }
 
     fn register_schema(&mut self, schema: &Schema) {
@@ -237,6 +261,35 @@ impl Checker {
             Statement::Union(union_stmt) => {
                 // Verify union target pipeline exists (lenient for now)
                 let _ = scope.resolve(&union_stmt.pipeline.name);
+            }
+            
+            Statement::Window(window_stmt) => {
+                // Verify time column exists and is timestamp type
+                match scope.resolve(&window_stmt.time_column.name) {
+                    Some(Type::Timestamp) | Some(Type::Unknown) => {}
+                    Some(other) => {
+                        self.errors.push(TypeError::TypeMismatch {
+                            expected: Type::Timestamp,
+                            found: other,
+                            span: window_stmt.time_column.span,
+                        });
+                    }
+                    None => {
+                        self.errors.push(TypeError::UndefinedVariable {
+                            name: window_stmt.time_column.name.clone(),
+                            span: window_stmt.time_column.span,
+                        });
+                    }
+                }
+                
+                // Add window_start and window_end to scope
+                scope.define_local("window_start", Type::Timestamp);
+                scope.define_local("window_end", Type::Timestamp);
+            }
+            
+            Statement::Emit(_emit_stmt) => {
+                // Emit configuration is validated at IR level
+                // (must follow a window statement)
             }
         }
     }
