@@ -68,12 +68,12 @@ Streaming Features (v0.2):
 
 ### v0.2 (In Progress)
 - [x] Streaming support with windowing
-- [ ] Spark backend (PySpark generation)
+- [x] Spark backend (PySpark generation)
+- [x] Flink backend (PyFlink generation)
 - [x] Match expression to SQL CASE conversion
 - [x] Source schema type checking improvements
 
 ### v0.3 (Planned)
-- [ ] Flink backend for production streaming
 - [ ] Language Server Protocol (LSP) for IDE support
 
 See FEATURE-BACKLOG.md in the clawd repo for detailed acceptance criteria.
@@ -121,6 +121,7 @@ meridian run hello.mer
 meridian check file.mer              # Check syntax and types
 meridian run file.mer                # Execute pipeline (DuckDB)
 meridian run file.mer --target spark # Generate PySpark code
+meridian run file.mer --target flink # Generate PyFlink code
 meridian test                        # Run tests
 meridian fmt file.mer                # Format code
 ```
@@ -137,6 +138,16 @@ meridian run pipeline.mer --target spark > pipeline.py
 
 # Run on Spark
 spark-submit pipeline.py
+```
+
+**Flink:** Generates PyFlink Table API code for streaming and batch processing. Use `--target flink` to generate code you can run on a Flink cluster.
+
+```bash
+# Generate PyFlink code
+meridian run pipeline.mer --target flink > pipeline.py
+
+# Run with PyFlink
+python pipeline.py
 ```
 
 ---

@@ -55,7 +55,7 @@ meridian run <FILE> [OPTIONS]
 | `--output <PATH>` | Override output path |
 | `--format <FMT>` | Output format: csv, json, parquet |
 | `--limit <N>` | Limit output rows |
-| `--target <TARGET>` | Code generation target: duckdb (default), spark |
+| `--target <TARGET>` | Code generation target: duckdb (default), spark, flink |
 | `--dry-run` | Show generated code without executing |
 | `--verbose` | Show optimization and compilation details |
 
@@ -74,7 +74,10 @@ meridian run report.mer --output results.csv --format csv
 meridian run big_query.mer --limit 10
 
 # Generate PySpark code
-meridian run pipeline.mer --target spark > pipeline.py
+meridian run pipeline.mer --target spark > pipeline_spark.py
+
+# Generate PyFlink code
+meridian run pipeline.mer --target flink > pipeline_flink.py
 
 # Show generated SQL without executing
 meridian run pipeline.mer --dry-run

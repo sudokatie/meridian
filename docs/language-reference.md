@@ -634,6 +634,43 @@ result = result.orderBy(F.col("total").desc())
 result = result.limit(10)
 ```
 
+### Flink
+
+Generates PyFlink Table API code for streaming and batch processing. Use `--target flink` to generate code.
+
+```bash
+meridian run pipeline.mer --target flink > pipeline.py
+python pipeline.py
+```
+
+Generated code includes:
+- TableEnvironment setup (streaming mode by default)
+- Table API operations mapping to Meridian pipeline
+- Window functions (Tumble, Slide, Session)
+- Proper type mappings for Flink DataTypes
+
+Example output:
+```python
+from pyflink.table import EnvironmentSettings, TableEnvironment
+from pyflink.table.expressions import col, lit
+from pyflink.table.window import Tumble, Slide, Session
+
+settings = EnvironmentSettings.in_streaming_mode()
+t_env = TableEnvironment.create(settings)
+
+result = t_env.from_path("orders")
+result = result.where((col("status") == lit("completed")))
+result = result.select(col("id"), (col("amount") * lit(2)).alias("total"))
+result = result.order_by(col("total").desc)
+result = result.fetch(10)
+```
+
+Flink-specific features:
+- Tumbling windows: `Tumble.over(lit(ms).millis).on(col("time_col"))`
+- Sliding windows: `Slide.over(...).every(...).on(...)`
+- Session windows: `Session.with_gap(...).on(...)`
+- Emit modes: retract, upsert, append
+
 ---
 
 ## Grammar Summary (EBNF)

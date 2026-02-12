@@ -7,7 +7,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use miette::Report;
-use meridian_codegen::{Backend, DuckDbBackend, SparkBackend};
+use meridian_codegen::{Backend, DuckDbBackend, FlinkBackend, SparkBackend};
 use meridian_ir::{build_pipeline, optimize};
 use meridian_parser::Item;
 use meridian_runtime::Executor;
@@ -48,7 +48,7 @@ enum Command {
         /// Output file (writes results instead of printing)
         #[arg(short, long)]
         output: Option<PathBuf>,
-        /// Code generation target (duckdb, spark)
+        /// Code generation target (duckdb, spark, flink)
         #[arg(long, default_value = "duckdb")]
         target: String,
     },
@@ -228,9 +228,6 @@ fn cmd_run(
         }
     }
     
-    // Select backend based on target
-    let is_spark = target == "spark";
-    
     for pipeline in pipelines {
         if verbose {
             println!("\n=== Pipeline: {} ===", pipeline.name.name);
@@ -256,30 +253,48 @@ fn cmd_run(
             println!("Optimization complete");
         }
         
-        // Generate code
-        let code = if is_spark {
-            let backend = SparkBackend::new();
-            match backend.generate(&optimized) {
-                Ok(code) => code,
-                Err(e) => {
-                    eprintln!("codegen error for '{}': {}", pipeline.name.name, e);
-                    continue;
+        // Generate code based on target
+        let code = match target {
+            "spark" => {
+                let backend = SparkBackend::new();
+                match backend.generate(&optimized) {
+                    Ok(code) => code,
+                    Err(e) => {
+                        eprintln!("codegen error for '{}': {}", pipeline.name.name, e);
+                        continue;
+                    }
                 }
             }
-        } else {
-            let backend = DuckDbBackend;
-            match backend.generate(&optimized) {
-                Ok(code) => code,
-                Err(e) => {
-                    eprintln!("codegen error for '{}': {}", pipeline.name.name, e);
-                    continue;
+            "flink" => {
+                let backend = FlinkBackend::new();
+                match backend.generate(&optimized) {
+                    Ok(code) => code,
+                    Err(e) => {
+                        eprintln!("codegen error for '{}': {}", pipeline.name.name, e);
+                        continue;
+                    }
+                }
+            }
+            _ => {
+                let backend = DuckDbBackend;
+                match backend.generate(&optimized) {
+                    Ok(code) => code,
+                    Err(e) => {
+                        eprintln!("codegen error for '{}': {}", pipeline.name.name, e);
+                        continue;
+                    }
                 }
             }
         };
         
-        if is_spark {
+        // Spark and Flink don't execute locally
+        if target == "spark" {
             println!("Generated PySpark:\n{}\n", code);
-            continue; // Spark doesn't execute locally
+            continue;
+        }
+        if target == "flink" {
+            println!("Generated PyFlink:\n{}\n", code);
+            continue;
         }
         
         let sql = code;

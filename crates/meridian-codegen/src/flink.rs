@@ -8,8 +8,6 @@ use crate::backend::{Backend, CodegenError};
 
 /// PyFlink code generation backend.
 pub struct FlinkBackend {
-    /// Environment variable name.
-    env_var: String,
     /// Table environment variable name.
     table_env_var: String,
 }
@@ -24,7 +22,6 @@ impl FlinkBackend {
     /// Create a new Flink backend.
     pub fn new() -> Self {
         Self {
-            env_var: "env".to_string(),
             table_env_var: "t_env".to_string(),
         }
     }
@@ -400,5 +397,219 @@ mod tests {
         let code = backend.generate(&ir).unwrap();
         assert!(code.contains("Tumble.over("));
         assert!(code.contains(".on(col(\"event_time\"))"));
+    }
+
+    #[test]
+    fn test_flink_join() {
+        let ir = IrNode::Join {
+            kind: JoinKind::Inner,
+            left: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            right: Box::new(IrNode::Scan {
+                source: "customers".to_string(),
+                columns: vec![],
+            }),
+            on: IrExpr::BinaryOp(
+                Box::new(IrExpr::Column("customer_id".to_string())),
+                BinOp::Eq,
+                Box::new(IrExpr::Column("id".to_string())),
+            ),
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains(".join("));
+        assert!(code.contains("left_t"));
+        assert!(code.contains("right_t"));
+    }
+
+    #[test]
+    fn test_flink_left_join() {
+        let ir = IrNode::Join {
+            kind: JoinKind::Left,
+            left: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            right: Box::new(IrNode::Scan {
+                source: "customers".to_string(),
+                columns: vec![],
+            }),
+            on: IrExpr::BinaryOp(
+                Box::new(IrExpr::Column("customer_id".to_string())),
+                BinOp::Eq,
+                Box::new(IrExpr::Column("id".to_string())),
+            ),
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains(".left_outer_join("));
+    }
+
+    #[test]
+    fn test_flink_sort() {
+        let ir = IrNode::Sort {
+            input: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            by: vec![
+                (IrExpr::Column("amount".to_string()), SortOrder::Desc),
+            ],
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains(".order_by("));
+        assert!(code.contains(".desc"));
+    }
+
+    #[test]
+    fn test_flink_limit() {
+        let ir = IrNode::Limit {
+            input: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            count: 10,
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains(".fetch(10)"));
+    }
+
+    #[test]
+    fn test_flink_union() {
+        let ir = IrNode::Union {
+            left: Box::new(IrNode::Scan {
+                source: "orders_2023".to_string(),
+                columns: vec![],
+            }),
+            right: Box::new(IrNode::Scan {
+                source: "orders_2024".to_string(),
+                columns: vec![],
+            }),
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains(".union_all("));
+    }
+
+    #[test]
+    fn test_flink_sink() {
+        let ir = IrNode::Sink {
+            input: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            destination: "output_table".to_string(),
+            format: "parquet".to_string(),
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains(".execute_insert(\"output_table\")"));
+        assert!(code.contains("# Sink to output_table (parquet format)"));
+    }
+
+    #[test]
+    fn test_flink_sliding_window() {
+        let ir = IrNode::Window {
+            input: Box::new(IrNode::Scan {
+                source: "events".to_string(),
+                columns: vec![],
+            }),
+            window_type: meridian_ir::IrWindowType::Sliding { 
+                size_ms: 3600000, 
+                slide_ms: 900000,
+            },
+            time_column: "event_time".to_string(),
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains("Slide.over("));
+        assert!(code.contains(".every("));
+        assert!(code.contains("# Sliding window"));
+    }
+
+    #[test]
+    fn test_flink_session_window() {
+        let ir = IrNode::Window {
+            input: Box::new(IrNode::Scan {
+                source: "events".to_string(),
+                columns: vec![],
+            }),
+            window_type: meridian_ir::IrWindowType::Session { gap_ms: 1800000 },
+            time_column: "event_time".to_string(),
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains("Session.with_gap("));
+        assert!(code.contains("# Session window"));
+    }
+
+    #[test]
+    fn test_flink_emit_modes() {
+        let ir = IrNode::Emit {
+            input: Box::new(IrNode::Scan {
+                source: "events".to_string(),
+                columns: vec![],
+            }),
+            mode: meridian_ir::IrEmitMode::Updates,
+            allowed_lateness_ms: Some(300000),
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains("# Emit mode: upsert"));
+        assert!(code.contains("# Allowed lateness: 300000ms"));
+    }
+
+    #[test]
+    fn test_flink_project_with_alias() {
+        let ir = IrNode::Project {
+            input: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            columns: vec![
+                ("id".to_string(), IrExpr::Column("id".to_string())),
+                ("total".to_string(), IrExpr::BinaryOp(
+                    Box::new(IrExpr::Column("amount".to_string())),
+                    BinOp::Mul,
+                    Box::new(IrExpr::Literal(IrLiteral::Int(2))),
+                )),
+            ],
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains(".select("));
+        assert!(code.contains(".alias(\"total\")"));
+    }
+
+    #[test]
+    fn test_flink_case_expression() {
+        let ir = IrNode::Project {
+            input: Box::new(IrNode::Scan {
+                source: "orders".to_string(),
+                columns: vec![],
+            }),
+            columns: vec![
+                ("status_label".to_string(), IrExpr::Case {
+                    when_clauses: vec![
+                        (
+                            IrExpr::BinaryOp(
+                                Box::new(IrExpr::Column("status".to_string())),
+                                BinOp::Eq,
+                                Box::new(IrExpr::Literal(IrLiteral::String("completed".to_string()))),
+                            ),
+                            IrExpr::Literal(IrLiteral::String("Done".to_string())),
+                        ),
+                    ],
+                    else_clause: Some(Box::new(IrExpr::Literal(IrLiteral::String("Pending".to_string())))),
+                }),
+            ],
+        };
+        let backend = FlinkBackend::new();
+        let code = backend.generate(&ir).unwrap();
+        assert!(code.contains("if_then_else"));
     }
 }
