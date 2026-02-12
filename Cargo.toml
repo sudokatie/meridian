@@ -7,6 +7,7 @@ members = [
     "crates/meridian-codegen",
     "crates/meridian-runtime",
     "crates/meridian-cli",
+    "crates/meridian-lsp",
 ]
 
 [workspace.package]

@@ -1,0 +1,19 @@
+[package]
+name = "meridian-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Language Server Protocol implementation for Meridian"
+
+[dependencies]
+meridian-parser = { path = "../meridian-parser" }
+meridian-types = { path = "../meridian-types" }
+
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dashmap = "6"
+
+[dev-dependencies]
