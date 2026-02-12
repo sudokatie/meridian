@@ -57,6 +57,12 @@ pub enum TypeError {
 
     #[error("duplicate definition: {name}")]
     DuplicateDefinition { name: String, span: Span },
+
+    #[error("stream-stream join requires 'within' temporal bounds")]
+    StreamJoinMissingWithin { span: Span },
+
+    #[error("watermark expression must be a timestamp minus a duration")]
+    InvalidWatermark { span: Span },
 }
 
 impl TypeError {
@@ -74,6 +80,8 @@ impl TypeError {
             TypeError::InvalidNot { span, .. } => *span,
             TypeError::NonBooleanCondition { span, .. } => *span,
             TypeError::DuplicateDefinition { span, .. } => *span,
+            TypeError::StreamJoinMissingWithin { span, .. } => *span,
+            TypeError::InvalidWatermark { span, .. } => *span,
         }
     }
 }

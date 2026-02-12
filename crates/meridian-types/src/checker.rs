@@ -80,9 +80,58 @@ impl Checker {
             Type::Unknown
         };
         
+        // Validate watermark expression if present
+        // Watermark should be: timestamp_column - duration
+        if let Some((_, watermark_expr)) = stream.config.iter().find(|(k, _)| k.name == "watermark") {
+            self.validate_watermark(watermark_expr, &inner_ty);
+        }
+        
         // Wrap in Stream type to indicate streaming source
-        // Use define_source with streaming flag (we'll use path as marker for now)
         self.env.define_source(&stream.name.name, Some("stream".to_string()), Type::Stream(Box::new(inner_ty)));
+    }
+    
+    /// Validate a watermark expression (must be timestamp - duration).
+    fn validate_watermark(&mut self, expr: &Expr, schema_ty: &Type) {
+        // Watermark must be: timestamp_column - duration
+        // or just a timestamp column (for event-time without delay)
+        match expr {
+            Expr::Binary(left, meridian_parser::BinOp::Sub, right, span) => {
+                // Left side must resolve to timestamp
+                let left_valid = match left.as_ref() {
+                    Expr::Ident(ident) => {
+                        if let Type::Struct(fields) = schema_ty {
+                            fields.iter().any(|(name, ty)| {
+                                name == &ident.name && matches!(ty, Type::Timestamp)
+                            })
+                        } else {
+                            true // Allow Unknown schemas
+                        }
+                    }
+                    _ => false,
+                };
+                
+                // Right side must be a duration
+                let right_valid = matches!(right.as_ref(), Expr::Duration(_));
+                
+                if !left_valid || !right_valid {
+                    self.errors.push(TypeError::InvalidWatermark { span: *span });
+                }
+            }
+            Expr::Ident(ident) => {
+                // Just a timestamp column (no delay)
+                if let Type::Struct(fields) = schema_ty {
+                    let is_timestamp = fields.iter().any(|(name, ty)| {
+                        name == &ident.name && matches!(ty, Type::Timestamp)
+                    });
+                    if !is_timestamp {
+                        self.errors.push(TypeError::InvalidWatermark { span: ident.span });
+                    }
+                }
+            }
+            _ => {
+                self.errors.push(TypeError::InvalidWatermark { span: expr.span() });
+            }
+        }
     }
 
     fn register_schema(&mut self, schema: &Schema) {
@@ -237,6 +286,11 @@ impl Checker {
             Statement::Limit(_) => {} // Nothing to check
 
             Statement::Join(join) => {
+                // Check if join source is a stream
+                let join_source_is_stream = scope.get_source(&join.source.name)
+                    .map(|s| matches!(s.ty, Type::Stream(_)))
+                    .unwrap_or(false);
+                
                 // Verify join source exists
                 if scope.resolve(&join.source.name).is_none() {
                     self.errors.push(TypeError::UndefinedVariable {
@@ -247,7 +301,7 @@ impl Checker {
 
                 // Condition must be boolean
                 match infer_expr(&join.condition, scope) {
-                    Ok(Type::Bool) => {}
+                    Ok(Type::Bool) | Ok(Type::Unknown) => {}
                     Ok(other) => {
                         self.errors.push(TypeError::NonBooleanCondition {
                             found: other,
@@ -255,6 +309,14 @@ impl Checker {
                         });
                     }
                     Err(e) => self.errors.push(e),
+                }
+                
+                // Stream-stream joins require 'within' temporal bounds
+                // (we check if join source is stream; pipeline source is tracked via scope)
+                if join_source_is_stream && join.within.is_none() {
+                    // Check if the pipeline's from source is also a stream
+                    // This is a simplified check - in practice we'd track pipeline source type
+                    self.errors.push(TypeError::StreamJoinMissingWithin { span: join.span });
                 }
             }
 
@@ -575,6 +637,115 @@ mod tests {
         let program = parse(source).unwrap();
         let result = check_program(&program);
         // Should succeed because is_valid (bool) and amount (float) are in scope
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_window_adds_bounds_to_scope() {
+        // Window statement should add window_start and window_end to scope
+        let source = r#"
+            schema Event {
+                event_time: timestamp
+                value: int
+            }
+
+            source events from file("events.csv") {
+                schema: Event
+            }
+
+            pipeline windowed {
+                from events
+                window tumbling(1.hours) on event_time
+                select { window_start, window_end, total: sum(value) }
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let result = check_program(&program);
+        // Should succeed because window_start and window_end are added to scope
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_window_requires_timestamp_column() {
+        // Window on non-timestamp column should fail
+        let source = r#"
+            schema Event {
+                id: string
+                value: int
+            }
+
+            source events from file("events.csv") {
+                schema: Event
+            }
+
+            pipeline windowed {
+                from events
+                window tumbling(1.hours) on id
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let result = check_program(&program);
+        // Should fail because id is string, not timestamp
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors.iter().any(|e| matches!(e, TypeError::TypeMismatch { .. })));
+    }
+
+    #[test]
+    fn test_stream_join_requires_within() {
+        // Stream-stream join without within should fail
+        let source = r#"
+            schema Event {
+                id: string
+                ts: timestamp
+            }
+
+            stream left_events from kafka("left") {
+                schema: Event
+            }
+
+            stream right_events from kafka("right") {
+                schema: Event
+            }
+
+            pipeline joined {
+                from left_events
+                join right_events on left_events.id == right_events.id
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let result = check_program(&program);
+        // Should fail because stream-stream join requires within
+        assert!(result.is_err());
+        let errors = result.unwrap_err();
+        assert!(errors.iter().any(|e| matches!(e, TypeError::StreamJoinMissingWithin { .. })));
+    }
+
+    #[test]
+    fn test_stream_join_with_within_ok() {
+        // Stream-stream join with within should pass
+        let source = r#"
+            schema Event {
+                id: string
+                ts: timestamp
+            }
+
+            stream left_events from kafka("left") {
+                schema: Event
+            }
+
+            stream right_events from kafka("right") {
+                schema: Event
+            }
+
+            pipeline joined {
+                from left_events
+                join right_events within 5.minutes on left_events.id == right_events.id
+            }
+        "#;
+        let program = parse(source).unwrap();
+        let result = check_program(&program);
+        // Should succeed because within is provided
         assert!(result.is_ok());
     }
 
