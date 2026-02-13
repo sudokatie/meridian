@@ -1,0 +1,71 @@
+{
+  "name": "meridian-lang",
+  "displayName": "Meridian",
+  "description": "Language support for Meridian data transformation DSL",
+  "version": "0.1.0",
+  "publisher": "sudokatie",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sudokatie/meridian"
+  },
+  "categories": ["Programming Languages"],
+  "keywords": ["meridian", "data", "pipeline", "dsl", "sql"],
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "activationEvents": [
+    "onLanguage:meridian"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "meridian",
+        "aliases": ["Meridian", "meridian"],
+        "extensions": [".mer", ".meridian"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "meridian",
+        "scopeName": "source.meridian",
+        "path": "./syntaxes/meridian.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Meridian",
+      "properties": {
+        "meridian.server.path": {
+          "type": "string",
+          "default": "meridian-lsp",
+          "description": "Path to the Meridian language server executable"
+        },
+        "meridian.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the language server"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}

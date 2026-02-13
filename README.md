@@ -73,8 +73,9 @@ Streaming Features (v0.2):
 - [x] Match expression to SQL CASE conversion
 - [x] Source schema type checking improvements
 
-### v0.3 (Planned)
-- [ ] Language Server Protocol (LSP) for IDE support
+### v0.3 (In Progress)
+- [x] Language Server Protocol (LSP) for IDE support
+- [x] VS Code extension
 
 See FEATURE-BACKLOG.md in the clawd repo for detailed acceptance criteria.
 
@@ -220,6 +221,35 @@ pipeline hourly_counts {
     count: count()
   }
 }
+```
+
+---
+
+## Editor Support
+
+### VS Code
+
+Install the extension from `editors/vscode`:
+
+```bash
+cd editors/vscode
+npm install
+npm run compile
+npx vsce package
+# Install the .vsix file in VS Code
+```
+
+Features:
+- Syntax highlighting
+- Real-time diagnostics
+- Hover information
+- Go to definition
+- Autocomplete
+
+Requires the LSP server:
+
+```bash
+cargo install --path crates/meridian-lsp
 ```
 
 ---

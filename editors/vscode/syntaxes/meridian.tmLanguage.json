@@ -1,0 +1,107 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Meridian",
+  "scopeName": "source.meridian",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#keywords" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#operators" },
+    { "include": "#types" },
+    { "include": "#functions" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-dash.meridian",
+          "match": "--.*$"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.meridian",
+          "match": "\\b(schema|source|stream|sink|pipeline|from|where|select|group|by|order|limit|join|left|right|on|fn|test|and|or|not|match|let|window|tumbling|sliding|session|emit|within|late|union|asc|desc)\\b"
+        },
+        {
+          "name": "constant.language.boolean.meridian",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "keyword.other.duration.meridian",
+          "match": "\\b\\d+\\.(seconds?|minutes?|hours?|days?)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.meridian",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.meridian",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.meridian",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.meridian",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.comparison.meridian",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.arithmetic.meridian",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.arrow.meridian",
+          "match": "->|=>"
+        },
+        {
+          "name": "keyword.operator.null.meridian",
+          "match": "\\?\\?|!"
+        },
+        {
+          "name": "keyword.operator.concat.meridian",
+          "match": "\\+\\+"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.meridian",
+          "match": "\\b(String|Int|BigInt|Float|Double|Bool|Timestamp|Date|Time|List|Decimal)\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.meridian",
+          "match": "\\b(sum|count|avg|min|max|first|last|abs|clamp|upper|lower|trim|substring|length|concat|coalesce|cast|date_trunc|date_diff|now)\\b"
+        }
+      ]
+    }
+  }
+}
