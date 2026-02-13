@@ -33,6 +33,12 @@
         "path": "./syntaxes/meridian.tmLanguage.json"
       }
     ],
+    "snippets": [
+      {
+        "language": "meridian",
+        "path": "./snippets/meridian.json"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "Meridian",

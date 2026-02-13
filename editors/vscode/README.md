@@ -9,6 +9,23 @@ Syntax highlighting and language server support for the Meridian data transforma
 - Hover information for keywords
 - Go to definition for schemas, functions, sources, and pipelines
 - Autocomplete for keywords and identifiers
+- Code snippets for common patterns
+
+## Snippets
+
+| Prefix | Description |
+|--------|-------------|
+| `schema` | Schema definition |
+| `source` | File source |
+| `pipeline` | Pipeline with from/where/select |
+| `sink` | File sink |
+| `fn` | Function definition |
+| `test` | Test block |
+| `match` | Match expression |
+| `stream` | Streaming source (Kafka) |
+| `window-tumbling` | Tumbling window |
+| `groupby` | Group by clause |
+| `orderby` | Order by clause |
 
 ## Requirements
 

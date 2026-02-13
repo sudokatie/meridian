@@ -1,0 +1,99 @@
+{
+  "Schema Definition": {
+    "prefix": "schema",
+    "body": [
+      "schema ${1:Name} {",
+      "  ${2:field}: ${3:String}",
+      "}"
+    ],
+    "description": "Define a new schema"
+  },
+  "Source from File": {
+    "prefix": "source",
+    "body": [
+      "source ${1:name} from file(\"${2:path}\") {",
+      "  schema: ${3:Schema}",
+      "}"
+    ],
+    "description": "Define a file source"
+  },
+  "Pipeline": {
+    "prefix": "pipeline",
+    "body": [
+      "pipeline ${1:name} {",
+      "  from ${2:source}",
+      "  ${3:where $4}",
+      "  select {",
+      "    ${5:field}",
+      "  }",
+      "}"
+    ],
+    "description": "Define a pipeline"
+  },
+  "Sink to File": {
+    "prefix": "sink",
+    "body": [
+      "sink ${1:pipeline} to file(\"${2:output_path}\")"
+    ],
+    "description": "Define a file sink"
+  },
+  "Function": {
+    "prefix": "fn",
+    "body": [
+      "fn ${1:name}(${2:arg}: ${3:type}) -> ${4:returnType} {",
+      "  ${5:body}",
+      "}"
+    ],
+    "description": "Define a function"
+  },
+  "Test": {
+    "prefix": "test",
+    "body": [
+      "test \"${1:description}\" {",
+      "  assert ${2:expression}",
+      "}"
+    ],
+    "description": "Define a test"
+  },
+  "Match Expression": {
+    "prefix": "match",
+    "body": [
+      "match {",
+      "  ${1:condition} -> ${2:value}",
+      "  _ -> ${3:default}",
+      "}"
+    ],
+    "description": "Match expression"
+  },
+  "Stream Source": {
+    "prefix": "stream",
+    "body": [
+      "stream ${1:name} from kafka(\"${2:topic}\") {",
+      "  schema: ${3:Schema}",
+      "  watermark: ${4:timestamp} - ${5:5}.minutes",
+      "}"
+    ],
+    "description": "Define a streaming source"
+  },
+  "Window Tumbling": {
+    "prefix": "window-tumbling",
+    "body": [
+      "window tumbling(${1:1}.${2:hour}) on ${3:timestamp}"
+    ],
+    "description": "Tumbling window"
+  },
+  "Group By": {
+    "prefix": "groupby",
+    "body": [
+      "group by ${1:field}"
+    ],
+    "description": "Group by clause"
+  },
+  "Order By": {
+    "prefix": "orderby",
+    "body": [
+      "order by ${1:field} ${2|asc,desc|}"
+    ],
+    "description": "Order by clause"
+  }
+}
