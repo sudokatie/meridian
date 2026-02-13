@@ -95,5 +95,54 @@
       "order by ${1:field} ${2|asc,desc|}"
     ],
     "description": "Order by clause"
+  },
+  "Join": {
+    "prefix": "join",
+    "body": [
+      "join ${1:source} on ${2:left_field} = ${3:right_field}"
+    ],
+    "description": "Join clause"
+  },
+  "Limit": {
+    "prefix": "limit",
+    "body": [
+      "limit ${1:100}"
+    ],
+    "description": "Limit clause"
+  },
+  "Where": {
+    "prefix": "where",
+    "body": [
+      "where ${1:field} ${2|=,!=,>,<,>=,<=|} ${3:value}"
+    ],
+    "description": "Where clause"
+  },
+  "Let Binding": {
+    "prefix": "let",
+    "body": [
+      "let ${1:name} = ${2:expression}"
+    ],
+    "description": "Let binding"
+  },
+  "Window Sliding": {
+    "prefix": "window-sliding",
+    "body": [
+      "window sliding(${1:1}.${2:hour}, ${3:5}.minutes) on ${4:timestamp}"
+    ],
+    "description": "Sliding window"
+  },
+  "Window Session": {
+    "prefix": "window-session",
+    "body": [
+      "window session(${1:30}.minutes) on ${2:timestamp}"
+    ],
+    "description": "Session window"
+  },
+  "Emit": {
+    "prefix": "emit",
+    "body": [
+      "emit ${1|on_window_close,on_each_event|}"
+    ],
+    "description": "Emit strategy for streaming"
   }
 }

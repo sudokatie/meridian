@@ -24,8 +24,15 @@ Syntax highlighting and language server support for the Meridian data transforma
 | `match` | Match expression |
 | `stream` | Streaming source (Kafka) |
 | `window-tumbling` | Tumbling window |
+| `window-sliding` | Sliding window |
+| `window-session` | Session window |
 | `groupby` | Group by clause |
 | `orderby` | Order by clause |
+| `join` | Join clause |
+| `where` | Where clause |
+| `limit` | Limit clause |
+| `let` | Let binding |
+| `emit` | Emit strategy for streaming |
 
 ## Requirements
 
