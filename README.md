@@ -47,7 +47,7 @@ You describe what you want. Meridian figures out how.
 
 ## Status
 
-**v0.2.0** - In Progress
+**v0.3.0** - Complete
 
 Core Features (v0.1):
 - Full lexer and recursive descent parser
@@ -66,14 +66,14 @@ Streaming Features (v0.2):
 
 ## Roadmap
 
-### v0.2 (In Progress)
+### v0.2 (Complete)
 - [x] Streaming support with windowing
 - [x] Spark backend (PySpark generation)
 - [x] Flink backend (PyFlink generation)
 - [x] Match expression to SQL CASE conversion
 - [x] Source schema type checking improvements
 
-### v0.3 (In Progress)
+### v0.3 (Complete)
 - [x] Language Server Protocol (LSP) for IDE support
 - [x] VS Code extension
 
